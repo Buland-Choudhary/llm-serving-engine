@@ -1,0 +1,189 @@
+{
+ "env": {
+  "git_sha": "78f4c03-dirty",
+  "time": "2026-11-03T21:56:23+0000",
+  "cpu": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+  "num_cpus": 4,
+  "torch_threads": 4,
+  "torch": "2.15.0+cpu",
+  "python": "3.13.18",
+  "device": "cpu"
+ },
+ "rows": [
+  {
+   "layer": "smollm2-135m gate_up",
+   "M": 1,
+   "F.linear [out,in]": 0.32973136936963277,
+   "x @ W_t [in,out]": 0.42972672972937614,
+   "oneDNN packed": 0.3258576306290034
+  },
+  {
+   "layer": "smollm2-135m gate_up",
+   "M": 4,
+   "F.linear [out,in]": 0.617556378379582,
+   "x @ W_t [in,out]": 0.5249376936938682,
+   "oneDNN packed": 0.3664068468477634
+  },
+  {
+   "layer": "smollm2-135m gate_up",
+   "M": 16,
+   "F.linear [out,in]": 1.1424736756756222,
+   "x @ W_t [in,out]": 0.6410844684671394,
+   "oneDNN packed": 0.5313743873877094
+  },
+  {
+   "layer": "smollm2-135m gate_up",
+   "M": 64,
+   "F.linear [out,in]": 1.6088041711698366,
+   "x @ W_t [in,out]": 1.4041714414422648,
+   "oneDNN packed": 0.9472983243245541
+  },
+  {
+   "layer": "smollm2-135m gate_up",
+   "M": 256,
+   "F.linear [out,in]": 2.718344774774704,
+   "x @ W_t [in,out]": 2.9905878738752216,
+   "oneDNN packed": 2.9727813693691196
+  },
+  {
+   "layer": "smollm2-135m down",
+   "M": 1,
+   "F.linear [out,in]": 0.16038819111094602,
+   "x @ W_t [in,out]": 0.14812059111136477,
+   "oneDNN packed": 0.24302991555588152
+  },
+  {
+   "layer": "smollm2-135m down",
+   "M": 4,
+   "F.linear [out,in]": 0.26946895111096736,
+   "x @ W_t [in,out]": 0.32899622666668116,
+   "oneDNN packed": 0.21889109333339246
+  },
+  {
+   "layer": "smollm2-135m down",
+   "M": 16,
+   "F.linear [out,in]": 0.6003917955553738,
+   "x @ W_t [in,out]": 0.2915013022225645,
+   "oneDNN packed": 0.31357122666627724
+  },
+  {
+   "layer": "smollm2-135m down",
+   "M": 64,
+   "F.linear [out,in]": 0.6899305777773811,
+   "x @ W_t [in,out]": 0.6250517955555147,
+   "oneDNN packed": 0.5641260577784932
+  },
+  {
+   "layer": "smollm2-135m down",
+   "M": 256,
+   "F.linear [out,in]": 1.4570803022221905,
+   "x @ W_t [in,out]": 1.9434667511106656,
+   "oneDNN packed": 1.4702277822218295
+  },
+  {
+   "layer": "qwen3-0.6b qkv",
+   "M": 1,
+   "F.linear [out,in]": 0.6101426041643284,
+   "x @ W_t [in,out]": 0.6596442083359003,
+   "oneDNN packed": 0.6428132083347767
+  },
+  {
+   "layer": "qwen3-0.6b qkv",
+   "M": 4,
+   "F.linear [out,in]": 1.0057094583307464,
+   "x @ W_t [in,out]": 0.9900096666655145,
+   "oneDNN packed": 0.6049911666631639
+  },
+  {
+   "layer": "qwen3-0.6b qkv",
+   "M": 16,
+   "F.linear [out,in]": 2.8529153958345432,
+   "x @ W_t [in,out]": 1.6854811041658497,
+   "oneDNN packed": 1.0838061458334398
+  },
+  {
+   "layer": "qwen3-0.6b qkv",
+   "M": 64,
+   "F.linear [out,in]": 4.562296125001808,
+   "x @ W_t [in,out]": 3.194342333335006,
+   "oneDNN packed": 1.6545225416659075
+  },
+  {
+   "layer": "qwen3-0.6b qkv",
+   "M": 256,
+   "F.linear [out,in]": 6.05541608333245,
+   "x @ W_t [in,out]": 6.587267291664034,
+   "oneDNN packed": 5.807518833331453
+  },
+  {
+   "layer": "qwen3-0.6b gate_up",
+   "M": 1,
+   "F.linear [out,in]": 0.830791299995326,
+   "x @ W_t [in,out]": 0.8986149666649604,
+   "oneDNN packed": 0.9596640000002784
+  },
+  {
+   "layer": "qwen3-0.6b gate_up",
+   "M": 4,
+   "F.linear [out,in]": 1.5643185333298484,
+   "x @ W_t [in,out]": 1.6412686666626541,
+   "oneDNN packed": 0.9879396000011789
+  },
+  {
+   "layer": "qwen3-0.6b gate_up",
+   "M": 16,
+   "F.linear [out,in]": 4.602602600001168,
+   "x @ W_t [in,out]": 2.401943999999882,
+   "oneDNN packed": 1.299958833336253
+  },
+  {
+   "layer": "qwen3-0.6b gate_up",
+   "M": 64,
+   "F.linear [out,in]": 5.82409236666687,
+   "x @ W_t [in,out]": 3.6420763333353534,
+   "oneDNN packed": 2.66292886666785
+  },
+  {
+   "layer": "qwen3-0.6b gate_up",
+   "M": 256,
+   "F.linear [out,in]": 9.43512253333362,
+   "x @ W_t [in,out]": 11.700354766662713,
+   "oneDNN packed": 8.921523000003617
+  },
+  {
+   "layer": "qwen3-0.6b down",
+   "M": 1,
+   "F.linear [out,in]": 0.5893919682536747,
+   "x @ W_t [in,out]": 0.4648575872998042,
+   "oneDNN packed": 0.5536510952374051
+  },
+  {
+   "layer": "qwen3-0.6b down",
+   "M": 4,
+   "F.linear [out,in]": 0.8064921269845992,
+   "x @ W_t [in,out]": 1.0604402380970046,
+   "oneDNN packed": 0.5865904285713889
+  },
+  {
+   "layer": "qwen3-0.6b down",
+   "M": 16,
+   "F.linear [out,in]": 2.4270948888912125,
+   "x @ W_t [in,out]": 1.8184250634909578,
+   "oneDNN packed": 0.8313694603159438
+  },
+  {
+   "layer": "qwen3-0.6b down",
+   "M": 64,
+   "F.linear [out,in]": 3.341352984126922,
+   "x @ W_t [in,out]": 2.3268889682539236,
+   "oneDNN packed": 1.9177709365096005
+  },
+  {
+   "layer": "qwen3-0.6b down",
+   "M": 256,
+   "F.linear [out,in]": 7.130632000001112,
+   "x @ W_t [in,out]": 7.458520650794122,
+   "oneDNN packed": 5.574175873017151
+  }
+ ]
+}

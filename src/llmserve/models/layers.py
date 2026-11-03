@@ -76,3 +76,72 @@ def _apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.
     x1, x2 = x[..., :half], x[..., half:]
     rotated = torch.cat([-x2, x1], dim=-1)
     return x * cos + rotated * sin
+
+
+class TransposedLinear(nn.Module):
+    """``y = x @ W_t (+ b)`` with the weight stored as ``[in, out]``.
+
+    A portable fallback: on MKL, a pre-transposed contiguous weight avoids the transposed-GEMM
+    path that is slow for 4-64 rows (``results/microbench/linear_layout.md``). On CPU the oneDNN
+    backend below is faster still. Created from an ``nn.Linear`` after loading.
+    """
+
+    def __init__(self, linear: nn.Linear) -> None:
+        super().__init__()
+        self.in_features = linear.in_features
+        self.out_features = linear.out_features
+        self.weight_t = nn.Parameter(linear.weight.detach().t().contiguous(), requires_grad=False)
+        self.bias = (
+            None
+            if linear.bias is None
+            else nn.Parameter(linear.bias.detach().clone(), requires_grad=False)
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        y = x @ self.weight_t
+        return y if self.bias is None else y + self.bias
+
+
+def swap_linears(module: nn.Module, factory) -> int:
+    """Replace every ``nn.Linear`` child (recursively) with ``factory(linear)``."""
+    n = 0
+    for name, child in module.named_children():
+        if isinstance(child, nn.Linear):
+            setattr(module, name, factory(child))
+            n += 1
+        else:
+            n += swap_linears(child, factory)
+    return n
+
+
+class OneDNNLinear(nn.Module):
+    """Linear layer on oneDNN with the weight pre-packed into the kernel's blocked layout.
+
+    This is what ``torch.compile`` (inductor, freezing) does for fp32 CPU linears. Packing once at
+    load time removes the per-call weight reorder and gives the best decode-regime (1-64 rows)
+    throughput on the benchmark CPU (``results/microbench/linear_layout.md``).
+    """
+
+    def __init__(self, linear: nn.Linear, batch_hint: int = 64) -> None:
+        super().__init__()
+        self.in_features = linear.in_features
+        self.out_features = linear.out_features
+        w = linear.weight.detach().contiguous()
+        self.weight_packed = nn.Parameter(
+            torch.ops.mkldnn._reorder_linear_weight(w, batch_hint), requires_grad=False
+        )
+        self.bias = (
+            None
+            if linear.bias is None
+            else nn.Parameter(linear.bias.detach().clone(), requires_grad=False)
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.ops.mkldnn._linear_pointwise(x, self.weight_packed, self.bias, "none", [], "")
+
+
+def onednn_available() -> bool:
+    return torch.backends.mkldnn.is_available() and hasattr(torch.ops.mkldnn, "_linear_pointwise")
+
+
+LINEAR_BACKENDS = {"torch": None, "transposed": TransposedLinear, "onednn": OneDNNLinear}

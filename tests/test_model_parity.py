@@ -74,3 +74,14 @@ def test_real_checkpoint_parity(alias):
     got = _prefill_logits(ours, ids, block_size=16)
     assert (got - ref).abs().max().item() < 1e-3
     assert torch.equal(got.argmax(-1), ref.argmax(-1))
+
+
+@pytest.mark.parametrize("backend", ["torch", "transposed", "onednn"])
+def test_linear_backends_agree(tiny_ckpt, backend):
+    hf, d = tiny_ckpt
+    ours = load_model(d, linear_backend=backend)
+    torch.manual_seed(3)
+    ids = torch.randint(2, 256, (19,))
+    with torch.no_grad():
+        ref = hf(ids[None]).logits[0]
+    torch.testing.assert_close(_prefill_logits(ours, ids), ref, atol=2e-4, rtol=2e-4)

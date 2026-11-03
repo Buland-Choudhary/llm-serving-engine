@@ -10,6 +10,7 @@ from safetensors import safe_open
 
 from llmserve.config import ModelConfig
 from llmserve.models.hub import resolve_model_path
+from llmserve.models.layers import LINEAR_BACKENDS, onednn_available, swap_linears
 from llmserve.models.transformer import CausalLM
 
 _LAYER = re.compile(r"^model\.layers\.(\d+)\.(.+)$")
@@ -89,6 +90,7 @@ def load_model(
     dtype: torch.dtype = torch.float32,
     device: str | torch.device = "cpu",
     max_positions: int | None = None,
+    linear_backend: str = "auto",
 ) -> CausalLM:
     path = resolve_model_path(str(name_or_path))
     cfg = ModelConfig.from_pretrained(path)
@@ -111,4 +113,17 @@ def load_model(
     model.rope.sin = model.rope.sin.float()
     model.eval()
     model.requires_grad_(False)
+    if linear_backend == "auto":
+        on_cpu = torch.device(device).type == "cpu"
+        linear_backend = (
+            "onednn" if on_cpu and dtype == torch.float32 and onednn_available() else "torch"
+        )
+    if linear_backend not in LINEAR_BACKENDS:
+        raise ValueError(
+            f"unknown linear backend {linear_backend!r}; use {sorted(LINEAR_BACKENDS)}"
+        )
+    factory = LINEAR_BACKENDS[linear_backend]
+    if factory is not None:
+        swap_linears(model, factory)
+    model.linear_backend = linear_backend
     return model
