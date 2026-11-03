@@ -42,28 +42,28 @@ Tier 1 (core engine + API) is finished and tagged `v1.0` before Tier 2 starts.
 
 ### Tier 1
 - **M0: setup**
-  - [ ] pyproject (uv, CPU torch), ruff, pytest, CI (lint + tests on tiny random models)
-  - [ ] repo-safety pre-commit check (no secrets, weights, large files)
-  - [ ] CLAUDE.md, PLAN.md, PROGRESS.md, README skeleton, LICENSE
+  - [x] pyproject (uv, CPU torch), ruff, pytest, CI (lint + tests on tiny random models)
+  - [x] repo-safety pre-commit check (no secrets, weights, large files)
+  - [x] CLAUDE.md, PLAN.md, PROGRESS.md, README skeleton, LICENSE
 - **M1: model from scratch**
-  - [ ] config parsing for Llama and Qwen3; weight loader (HF hub download + safetensors, name mapping, tied embeddings)
-  - [ ] layers: RMSNorm, RoPE (incl. Llama-3 style scaling if present), GQA attention, SwiGLU MLP, Qwen3 q/k-norm
+  - [x] config parsing for Llama and Qwen3; weight loader (HF hub download + safetensors, name mapping, tied embeddings)
+  - [x] layers: RMSNorm, RoPE (incl. Llama-3 style scaling if present), GQA attention, SwiGLU MLP, Qwen3 q/k-norm
   - [ ] contiguous KV-cache generate loop (greedy + sampling) as the simple reference path
-  - [ ] parity tests vs HF transformers: tiny random configs (CI) and real checkpoints (slow): logits
+  - [x] parity tests vs HF transformers: tiny random configs (CI) and real checkpoints (slow): logits
         match within tolerance and greedy tokens match exactly
 - **M2: paged KV cache**
-  - [ ] physical cache `[layers, blocks, block_size, kv_heads, head_dim]` for K and V; slot mapping writes
-  - [ ] BlockAllocator (free list, ref counts) and per-sequence block tables
-  - [ ] varlen ("ragged") batch: flattened tokens + per-sequence metadata; paged attention reference
+  - [x] physical cache `[layers, blocks, block_size, kv_heads, head_dim]` for K and V; slot mapping writes
+  - [x] BlockAllocator (free list, ref counts) and per-sequence block tables
+  - [x] varlen ("ragged") batch: flattened tokens + per-sequence metadata; paged attention reference
         (gather + SDPA) for prefill and decode
-  - [ ] tests: paged == contiguous, allocator invariants, out-of-blocks handling
+  - [x] tests: paged == contiguous, allocator invariants, out-of-blocks handling
 - **M3: scheduler + engine**
-  - [ ] Sequence state machine; iteration-level (continuous) batching with `max_num_seqs` and
+  - [x] Sequence state machine; iteration-level (continuous) batching with `max_num_seqs` and
         `max_num_batched_tokens`
-  - [ ] preemption by recompute when the cache is full; resumed output identical to un-preempted output
-  - [ ] batched sampler with per-request params and seeds; stop tokens, stop strings, max_tokens; logprobs
-  - [ ] `n > 1` parallel sampling sharing prompt blocks (ref-counted, copy-on-write on the last block)
-  - [ ] offline `LLM.generate()` API; batch-invariance tests (same output alone vs in a batch)
+  - [x] preemption by recompute when the cache is full; resumed output identical to un-preempted output
+  - [x] batched sampler with per-request params and seeds; stop tokens, stop strings, max_tokens; logprobs
+  - [x] `n > 1` parallel sampling sharing prompt blocks (ref-counted, copy-on-write on the last block)
+  - [x] offline `LLM.generate()` API; batch-invariance tests (same output alone vs in a batch)
 - **M4: benchmarks v1**
   - [ ] workloads: ShareGPT-style length distribution (sampled subset), fixed-length synthetic, shared-prefix
   - [ ] baselines: HF transformers `generate` one request at a time, and static batching (padded, bs=8/16)
