@@ -34,8 +34,10 @@ def main() -> int:
         tail = (r.stdout + r.stderr).strip().splitlines()[-3:]
         with log.open("a") as fh:
             status = "OK" if r.returncode == 0 else f"FAIL({r.returncode})"
-            fh.write(f"[{time.strftime('%H:%M:%S')}] ({i}/{len(cmds)}) {status} "
-                     f"{time.time() - t0:.0f}s\n    " + "\n    ".join(tail) + "\n")
+            fh.write(
+                f"[{time.strftime('%H:%M:%S')}] ({i}/{len(cmds)}) {status} "
+                f"{time.time() - t0:.0f}s\n    " + "\n    ".join(tail) + "\n"
+            )
         failures += r.returncode != 0
     with log.open("a") as fh:
         fh.write(f"[{time.strftime('%H:%M:%S')}] QUEUE DONE, {failures} failures\n")
