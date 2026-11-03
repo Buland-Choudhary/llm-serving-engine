@@ -1,0 +1,13 @@
+# M4: offline throughput on ShareGPT (all requests arrive at t=0), SmolLM2-135M, 200 requests
+.venv/bin/llmserve bench --system engine --model smollm2-135m --num-requests 200 --out results/m4/offline/smollm2-135m__engine.json
+.venv/bin/llmserve bench --system hf-static --batch-size 16 --model smollm2-135m --num-requests 200 --out results/m4/offline/smollm2-135m__hf-static16.json
+.venv/bin/llmserve bench --system hf-static --batch-size 64 --model smollm2-135m --num-requests 200 --out results/m4/offline/smollm2-135m__hf-static64.json
+.venv/bin/llmserve bench --system hf-seq --model smollm2-135m --num-requests 200 --out results/m4/offline/smollm2-135m__hf-seq.json
+# ablations: which optimization buys what
+.venv/bin/llmserve bench --system engine --model smollm2-135m --num-requests 200 --attention-backend torch --out results/m4/offline/smollm2-135m__engine-torchattn.json
+.venv/bin/llmserve bench --system engine --model smollm2-135m --num-requests 200 --attention-backend torch --linear-backend torch --out results/m4/offline/smollm2-135m__engine-torchattn-torchlinear.json
+.venv/bin/llmserve bench --system engine --model smollm2-135m --num-requests 200 --max-num-seqs 128 --out results/m4/offline/smollm2-135m__engine-seqs128.json
+# Qwen3-0.6B, 100 requests
+.venv/bin/llmserve bench --system engine --model qwen3-0.6b --num-requests 100 --out results/m4/offline/qwen3-0.6b__engine.json
+.venv/bin/llmserve bench --system hf-static --batch-size 16 --model qwen3-0.6b --num-requests 100 --out results/m4/offline/qwen3-0.6b__hf-static16.json
+.venv/bin/llmserve bench --system hf-seq --model qwen3-0.6b --num-requests 100 --out results/m4/offline/qwen3-0.6b__hf-seq.json

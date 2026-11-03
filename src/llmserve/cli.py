@@ -7,6 +7,8 @@ import sys
 COMMANDS = {
     "fetch": ("llmserve.models.hub", "download models by alias"),
     "bench": ("llmserve.bench.run", "run a benchmark"),
+    "serve": ("llmserve.server.app", "start the OpenAI-compatible HTTP server"),
+    "loadtest": ("llmserve.bench.http_client", "load-test an OpenAI-compatible server"),
     "generate": ("llmserve.generate_cli", "generate text from the command line"),
 }
 
