@@ -33,6 +33,8 @@ class EngineConfig:
     enable_chunked_prefill: bool = True
     enable_prefix_caching: bool = True
     num_threads: int | None = None
+    linear_backend: str = "auto"  # auto | onednn | transposed | torch
+    attention_backend: str = "auto"  # auto | cpp | torch
     extra: dict = field(default_factory=dict)
 
     def scheduler_config(self) -> SchedulerConfig:
@@ -52,6 +54,10 @@ class StepStats:
     num_decode_tokens: int = 0
     num_preempted: int = 0
     step_time: float = 0.0
+    t_schedule: float = 0.0
+    t_forward: float = 0.0  # input prep + model forward + logits
+    t_sample: float = 0.0
+    t_postprocess: float = 0.0  # token append, detokenize, stop checks, outputs
 
 
 class LLMEngine:
@@ -79,7 +85,7 @@ class LLMEngine:
         self.kv_cache = KVCache(model.cfg, num_blocks, cfg.block_size, dtype, cfg.device)
         self.block_manager = BlockManager(num_blocks, cfg.block_size, cfg.enable_prefix_caching)
         self.scheduler = Scheduler(cfg.scheduler_config(), self.block_manager)
-        self.runner = ModelRunner(model, self.kv_cache)
+        self.runner = ModelRunner(model, self.kv_cache, cfg.attention_backend)
         self.detok = IncrementalDetokenizer(tokenizer) if tokenizer is not None else None
         self.requests: dict[str, Request] = {}
         self._seq_ids = itertools.count()
@@ -152,7 +158,8 @@ class LLMEngine:
     def step(self) -> list[RequestOutput]:
         t0 = time.monotonic()
         sched = self.scheduler.schedule()
-        stats = StepStats(num_preempted=len(sched.preempted))
+        t1 = time.monotonic()
+        stats = StepStats(num_preempted=len(sched.preempted), t_schedule=t1 - t0)
         if sched.is_empty:
             self.last_step = stats
             return []
@@ -164,6 +171,8 @@ class LLMEngine:
             if s.seq.num_computed_tokens + s.num_new_tokens == s.seq.num_tokens
         ]
         logits = self.runner.execute(sched, sample_rows)
+        t2 = time.monotonic()
+        stats.t_forward = t2 - t1
         for s in sched.scheduled:
             s.seq.num_computed_tokens += s.num_new_tokens
             self.block_manager.cache_full_blocks(s.seq)
@@ -192,7 +201,9 @@ class LLMEngine:
             if len(expanded_rows) != len(seqs):
                 logits = logits[torch.tensor(expanded_rows)]
             rows = [self._sample_row(s) for s in expanded_seqs]
+            t3 = time.monotonic()
             out = sample(logits, rows)
+            stats.t_sample = time.monotonic() - t3
             for j, seq in enumerate(expanded_seqs):
                 self._append_token(
                     seq,
@@ -206,6 +217,7 @@ class LLMEngine:
         stats.num_seqs = len(sched.scheduled)
         stats.num_tokens = sched.num_tokens
         stats.step_time = time.monotonic() - t0
+        stats.t_postprocess = stats.step_time - stats.t_schedule - stats.t_forward - stats.t_sample
         self.last_step = stats
         self.total_steps += 1
 

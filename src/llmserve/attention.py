@@ -15,6 +15,7 @@ Each sequence's KV lives in fixed-size blocks scattered anywhere in the cache. A
 
 from __future__ import annotations
 
+import functools
 from dataclasses import dataclass, field
 
 import torch
@@ -34,8 +35,12 @@ class AttentionMetadata:
     slot_mapping: torch.Tensor  # [T]
     prefills: list[PrefillSeq] = field(default_factory=list)
     decode_token_idx: torch.Tensor | None = None  # [Bd] index into the flat batch
-    decode_slots: torch.Tensor | None = None  # [Bd, max_ctx]
-    decode_mask: torch.Tensor | None = None  # [Bd, 1, 1, max_ctx] True = attend
+    decode_block_tables: torch.Tensor | None = None  # [Bd, max_blocks] (native kernel)
+    decode_ctx_lens: torch.Tensor | None = None  # [Bd]
+    decode_slots: torch.Tensor | None = None  # [Bd, max_ctx] (torch path)
+    decode_mask: torch.Tensor | None = None  # [Bd, 1, 1, max_ctx] True = attend (torch path)
+    block_size: int = 16
+    backend: str = "torch"  # "torch" (gather + SDPA) or "cpp" (native paged kernel)
     # Prefill masks are cached per sequence on first use (shared by all layers).
     _prefill_masks: dict[int, torch.Tensor | None] = field(default_factory=dict)
 
@@ -46,6 +51,7 @@ class AttentionMetadata:
         block_tables: list[list[int]],
         block_size: int,
         device: torch.device | str = "cpu",
+        backend: str = "torch",
     ) -> AttentionMetadata:
         """Build metadata for a batch.
 
@@ -56,6 +62,8 @@ class AttentionMetadata:
         prefills: list[PrefillSeq] = []
         dec_idx: list[int] = []
         dec_slots: list[torch.Tensor] = []
+        dec_tables: list[list[int]] = []
+        dec_ctx: list[int] = []
         q_start = 0
         for q_len, ctx_len, table in zip(q_lens, ctx_lens, block_tables, strict=True):
             n_blocks = (ctx_len + block_size - 1) // block_size
@@ -69,6 +77,8 @@ class AttentionMetadata:
             if q_len == 1:
                 dec_idx.append(q_start)
                 dec_slots.append(slots)
+                dec_tables.append(table[:n_blocks])
+                dec_ctx.append(ctx_len)
             else:
                 prefills.append(PrefillSeq(q_start, q_len, ctx_len, slots.to(device)))
             q_start += q_len
@@ -78,8 +88,18 @@ class AttentionMetadata:
             if slot_parts
             else torch.empty(0, dtype=torch.long, device=device),
             prefills=prefills,
+            block_size=block_size,
+            backend=backend,
         )
-        if dec_idx:
+        if dec_idx and backend == "cpp":
+            mb = max(len(t) for t in dec_tables)
+            bt = torch.zeros(len(dec_tables), mb, dtype=torch.long)
+            for i, t in enumerate(dec_tables):
+                bt[i, : len(t)] = torch.tensor(t, dtype=torch.long)
+            meta.decode_token_idx = torch.tensor(dec_idx, dtype=torch.long, device=device)
+            meta.decode_block_tables = bt.to(device)
+            meta.decode_ctx_lens = torch.tensor(dec_ctx, dtype=torch.long, device=device)
+        elif dec_idx:
             max_ctx = max(s.numel() for s in dec_slots)
             table = torch.zeros(len(dec_slots), max_ctx, dtype=torch.long)
             mask = torch.zeros(len(dec_slots), max_ctx, dtype=torch.bool)
@@ -127,7 +147,7 @@ def paged_attention(
 ) -> torch.Tensor:
     """Write this step's K/V into the cache, then attend. q: [T, Hq, D] -> out: [T, Hq, D]."""
     write_kv(k_cache, v_cache, k, v, meta.slot_mapping)
-    out = torch.empty_like(q)
+    out = q.new_empty(q.shape)
 
     for i, p in enumerate(meta.prefills):
         qi = q[p.q_start : p.q_start + p.q_len].transpose(0, 1).unsqueeze(0)  # [1, Hq, q, D]
@@ -139,7 +159,31 @@ def paged_attention(
         )
         out[p.q_start : p.q_start + p.q_len] = oi.squeeze(0).transpose(0, 1)
 
-    if meta.decode_token_idx is not None:
+    if meta.decode_block_tables is not None:
+        from llmserve.kernels import load_paged_attention
+
+        if not meta.prefills:  # pure decode batch: every token is a decode token, in order
+            return load_paged_attention().paged_attention_decode(
+                q.contiguous(),
+                k_cache,
+                v_cache,
+                meta.decode_block_tables,
+                meta.decode_ctx_lens,
+                meta.block_size,
+                scale,
+            )
+        qd = q[meta.decode_token_idx].contiguous()  # [B, Hq, D]
+        od = load_paged_attention().paged_attention_decode(
+            qd,
+            k_cache,
+            v_cache,
+            meta.decode_block_tables,
+            meta.decode_ctx_lens,
+            meta.block_size,
+            scale,
+        )
+        out[meta.decode_token_idx] = od
+    elif meta.decode_token_idx is not None:
         qd = q[meta.decode_token_idx].unsqueeze(2)  # [B, Hq, 1, D]
         kd = k_cache[meta.decode_slots].transpose(1, 2)  # [B, Hk, ctx, D]
         vd = v_cache[meta.decode_slots].transpose(1, 2)
@@ -148,3 +192,19 @@ def paged_attention(
         )
         out[meta.decode_token_idx] = od.squeeze(2)
     return out
+
+
+@functools.cache
+def resolve_backend(name: str, device: str = "cpu") -> str:
+    """``auto`` -> ``cpp`` when the native kernel builds (CPU fp32), else ``torch``."""
+    if name == "torch":
+        return "torch"
+    if name not in ("auto", "cpp"):
+        raise ValueError(f"unknown attention backend {name!r}")
+    from llmserve.kernels import load_paged_attention
+
+    if str(device).startswith("cpu") and load_paged_attention() is not None:
+        return "cpp"
+    if name == "cpp":
+        raise RuntimeError("native paged attention kernel is not available")
+    return "torch"

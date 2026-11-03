@@ -139,15 +139,17 @@ def sample(logits: torch.Tensor, rows: list[SampleRow]) -> SamplerOutput:
         if r.banned_token_ids:
             logits[i, r.banned_token_ids] = _NEG_INF
 
-    greedy = torch.tensor([r.params.greedy for r in rows])
-    temps = torch.tensor([1.0 if r.params.greedy else r.params.temperature for r in rows])
-    tokens = torch.empty(B, dtype=torch.long)
-    if bool(greedy.any()):
-        tokens[greedy] = logits[greedy].argmax(-1)
-    rand = ~greedy
-    if bool(rand.any()):
-        idx = rand.nonzero().flatten()
-        sub = logits[idx] / temps[idx, None]
+    greedy_rows = [i for i, r in enumerate(rows) if r.params.greedy]
+    if len(greedy_rows) == B:  # fast path: no masking/indexing copies of the logits
+        tokens = logits.argmax(-1)
+    else:
+        tokens = torch.empty(B, dtype=torch.long)
+        if greedy_rows:
+            gi = torch.tensor(greedy_rows)
+            tokens[gi] = logits.index_select(0, gi).argmax(-1)
+        idx = torch.tensor([i for i, r in enumerate(rows) if not r.params.greedy])
+        temps = torch.tensor([rows[i].params.temperature for i in idx.tolist()])
+        sub = logits.index_select(0, idx) / temps[:, None]
         sub = _top_k_top_p_min_p(
             sub,
             torch.tensor([rows[i].params.top_k for i in idx.tolist()]),

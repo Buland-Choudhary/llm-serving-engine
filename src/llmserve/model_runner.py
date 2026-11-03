@@ -4,18 +4,22 @@ from __future__ import annotations
 
 import torch
 
-from llmserve.attention import AttentionMetadata
+from llmserve.attention import AttentionMetadata, resolve_backend
 from llmserve.kv_cache import KVCache
 from llmserve.models.transformer import CausalLM
 from llmserve.scheduler import SchedulerOutput
 
 
 class ModelRunner:
-    def __init__(self, model: CausalLM, kv_cache: KVCache) -> None:
+    def __init__(self, model: CausalLM, kv_cache: KVCache, attention_backend: str = "auto") -> None:
         self.model = model
         self.cache = kv_cache
         self.block_size = kv_cache.block_size
         self.device = next(model.parameters()).device
+        dtype = next(model.parameters()).dtype
+        if attention_backend == "auto" and dtype != torch.float32:
+            attention_backend = "torch"
+        self.attention_backend = resolve_backend(attention_backend, str(self.device))
 
     def copy_blocks(self, copies: list[tuple[int, int]]) -> None:
         if not copies:
@@ -46,7 +50,9 @@ class ModelRunner:
             ctx_lens.append(start + n)
             tables.append(seq.block_table)
             last_idx.append(len(ids) - 1)
-        meta = AttentionMetadata.build(q_lens, ctx_lens, tables, self.block_size, self.device)
+        meta = AttentionMetadata.build(
+            q_lens, ctx_lens, tables, self.block_size, self.device, self.attention_backend
+        )
         input_ids = torch.tensor(ids, dtype=torch.long, device=self.device)
         positions = torch.tensor(pos, dtype=torch.long, device=self.device)
         hidden = self.model(input_ids, positions, self.cache.layers, meta)

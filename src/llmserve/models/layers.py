@@ -62,13 +62,25 @@ class RotaryEmbedding(nn.Module):
         self.register_buffer("cos", emb.cos().float(), persistent=False)
         self.register_buffer("sin", emb.sin().float(), persistent=False)
 
+    def tables(
+        self, positions: torch.Tensor, dtype: torch.dtype
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """cos/sin rows for ``positions`` ([T] -> [T, 1, D]); computed once per forward pass."""
+        return (
+            self.cos[positions].unsqueeze(1).to(dtype),
+            self.sin[positions].unsqueeze(1).to(dtype),
+        )
+
     def forward(
         self, positions: torch.Tensor, q: torch.Tensor, k: torch.Tensor
     ) -> tuple[torch.Tensor, torch.Tensor]:
         # q: [T, Hq, D], k: [T, Hk, D], positions: [T]
-        cos = self.cos[positions].unsqueeze(1).to(q.dtype)
-        sin = self.sin[positions].unsqueeze(1).to(q.dtype)
-        return _apply_rope(q, cos, sin), _apply_rope(k, cos, sin)
+        cos, sin = self.tables(positions, q.dtype)
+        return apply_rope(q, k, cos, sin)
+
+
+def apply_rope(q, k, cos, sin):
+    return _apply_rope(q, cos, sin), _apply_rope(k, cos, sin)
 
 
 def _apply_rope(x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor) -> torch.Tensor:

@@ -13,7 +13,7 @@ from torch import nn
 
 from llmserve.attention import AttentionMetadata, paged_attention
 from llmserve.config import ModelConfig
-from llmserve.models.layers import RMSNorm, RotaryEmbedding
+from llmserve.models.layers import RMSNorm, RotaryEmbedding, apply_rope
 
 
 class Attention(nn.Module):
@@ -37,8 +37,7 @@ class Attention(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        positions: torch.Tensor,
-        rope: RotaryEmbedding,
+        rope_cs: tuple[torch.Tensor, torch.Tensor],
         k_cache: torch.Tensor,
         v_cache: torch.Tensor,
         meta: AttentionMetadata,
@@ -51,7 +50,7 @@ class Attention(nn.Module):
         if self.qk_norm:
             q = self.q_norm(q)
             k = self.k_norm(k)
-        q, k = rope(positions, q, k)
+        q, k = apply_rope(q, k, *rope_cs)
         o = paged_attention(q, k, v, k_cache, v_cache, meta, self.scale)
         return self.o_proj(o.reshape(T, self.q_size))
 
@@ -76,8 +75,8 @@ class DecoderLayer(nn.Module):
         self.post_attention_layernorm = RMSNorm(cfg.hidden_size, cfg.rms_norm_eps)
         self.mlp = MLP(cfg)
 
-    def forward(self, x, positions, rope, k_cache, v_cache, meta):
-        x = x + self.self_attn(self.input_layernorm(x), positions, rope, k_cache, v_cache, meta)
+    def forward(self, x, rope_cs, k_cache, v_cache, meta):
+        x = x + self.self_attn(self.input_layernorm(x), rope_cs, k_cache, v_cache, meta)
         return x + self.mlp(self.post_attention_layernorm(x))
 
 
@@ -109,8 +108,9 @@ class CausalLM(nn.Module):
     ) -> torch.Tensor:
         """input_ids, positions: [T]. Returns final hidden states [T, hidden]."""
         x = self.embed_tokens(input_ids)
+        rope_cs = self.rope.tables(positions, x.dtype)
         for layer, (kc, vc) in zip(self.layers, kv_caches, strict=True):
-            x = layer(x, positions, self.rope, kc, vc, meta)
+            x = layer(x, rope_cs, kc, vc, meta)
         return self.norm(x)
 
     def compute_logits(self, hidden: torch.Tensor) -> torch.Tensor:
