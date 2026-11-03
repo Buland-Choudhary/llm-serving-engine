@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Large / local artifacts (never in git)
+/models/
+/data/raw/
+/runs/
+*.safetensors
+*.bin
+*.gguf
+*.pt
+*.pth
+*.so
+
+# Secrets
+.env
+.env.*
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
+runs_fetch.log

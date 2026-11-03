@@ -1,0 +1,128 @@
+# PLAN: llm-serving-engine
+
+**Goal.** Build an LLM inference and serving engine from scratch in PyTorch, using the core ideas of
+production engines like vLLM and SGLang: paged KV cache, continuous batching, chunked prefill,
+prefix caching, speculative decoding and weight quantization. It sits behind an OpenAI-compatible
+streaming API. Every claim is backed by a test (correctness) or a results file (speed).
+
+**Constraints.**
+- Built and measured on a 4-vCPU cloud Xeon (AVX-512 + VNNI, no AMX, no bf16, no GPU, 15 GB RAM).
+  All numbers are CPU numbers and say so.
+- The code is device-agnostic (`--device cuda` should work), but nothing is claimed for GPUs without a
+  real GPU run.
+- Models: SmolLM2-135M/360M/1.7B (Llama architecture) and Qwen3-0.6B/1.7B (Qwen3 architecture),
+  loaded from Hugging Face safetensors. **No Hugging Face modeling code runs inside the engine.**
+  `transformers` is used only for tokenizers and chat templates, and as the reference in tests and
+  baselines.
+
+## Architecture (target)
+
+```
+            HTTP (OpenAI API, SSE)                     offline API
+   client ───────────────▶ server/ (FastAPI) ──┐      LLM.generate()
+                                               ▼          │
+                                       AsyncEngine (bg thread)
+                                               │          │
+                                               ▼          ▼
+   ┌──────────────────────────── LLMEngine.step() ─────────────────────────────┐
+   │ Scheduler: waiting/running queues, token budget, chunked prefill,         │
+   │            preemption (recompute), prefix-cache lookups                   │
+   │ BlockManager: block tables, ref counts, hash-based prefix cache, LRU      │
+   │ ModelRunner: flatten batch -> input_ids/positions/slot_mapping/metadata   │
+   │ Model (from scratch): embed -> N x [RMSNorm, attn(RoPE, GQA, paged KV),   │
+   │            RMSNorm, SwiGLU] -> norm -> lm_head (last token per seq only)  │
+   │ Sampler: temperature/top-k/top-p/min-p/penalties/seed/logprobs, batched   │
+   │ SpecDecode: draft-model or n-gram proposer + lossless rejection sampler   │
+   └───────────────────────────────────────────────────────────────────────────┘
+```
+
+## Milestones
+
+Tier 1 (core engine + API) is finished and tagged `v1.0` before Tier 2 starts.
+
+### Tier 1
+- **M0: setup**
+  - [ ] pyproject (uv, CPU torch), ruff, pytest, CI (lint + tests on tiny random models)
+  - [ ] repo-safety pre-commit check (no secrets, weights, large files)
+  - [ ] CLAUDE.md, PLAN.md, PROGRESS.md, README skeleton, LICENSE
+- **M1: model from scratch**
+  - [ ] config parsing for Llama and Qwen3; weight loader (HF hub download + safetensors, name mapping, tied embeddings)
+  - [ ] layers: RMSNorm, RoPE (incl. Llama-3 style scaling if present), GQA attention, SwiGLU MLP, Qwen3 q/k-norm
+  - [ ] contiguous KV-cache generate loop (greedy + sampling) as the simple reference path
+  - [ ] parity tests vs HF transformers: tiny random configs (CI) and real checkpoints (slow): logits
+        match within tolerance and greedy tokens match exactly
+- **M2: paged KV cache**
+  - [ ] physical cache `[layers, blocks, block_size, kv_heads, head_dim]` for K and V; slot mapping writes
+  - [ ] BlockAllocator (free list, ref counts) and per-sequence block tables
+  - [ ] varlen ("ragged") batch: flattened tokens + per-sequence metadata; paged attention reference
+        (gather + SDPA) for prefill and decode
+  - [ ] tests: paged == contiguous, allocator invariants, out-of-blocks handling
+- **M3: scheduler + engine**
+  - [ ] Sequence state machine; iteration-level (continuous) batching with `max_num_seqs` and
+        `max_num_batched_tokens`
+  - [ ] preemption by recompute when the cache is full; resumed output identical to un-preempted output
+  - [ ] batched sampler with per-request params and seeds; stop tokens, stop strings, max_tokens; logprobs
+  - [ ] `n > 1` parallel sampling sharing prompt blocks (ref-counted, copy-on-write on the last block)
+  - [ ] offline `LLM.generate()` API; batch-invariance tests (same output alone vs in a batch)
+- **M4: benchmarks v1**
+  - [ ] workloads: ShareGPT-style length distribution (sampled subset), fixed-length synthetic, shared-prefix
+  - [ ] baselines: HF transformers `generate` one request at a time, and static batching (padded, bs=8/16)
+  - [ ] offline throughput; online serving with Poisson arrivals: TTFT, TPOT, E2E p50/p90/p99, goodput under an SLO
+  - [ ] every result JSON records git SHA, CPU model, torch version, threads, model, config, seed
+  - [ ] plots; first headline numbers in README
+- **M5: chunked prefill + prefix caching**
+  - [ ] chunked prefill mixed with decodes under the token budget (decode-first scheduling)
+  - [ ] automatic prefix caching: hash chain over full blocks, cache hits skip prefill, LRU eviction of free cached blocks
+  - [ ] benchmarks: TTFT/ITL under mixed long/short load (chunked vs not); shared-system-prompt and multi-turn workloads (cache on vs off)
+- **M6: OpenAI-compatible server**
+  - [ ] FastAPI `/v1/completions`, `/v1/chat/completions` (chat templates), `/v1/models`, `/health`
+  - [ ] SSE streaming, async engine loop in a background thread, cancellation on client disconnect
+  - [ ] Prometheus `/metrics` (TTFT, TPOT, queue depth, KV-cache usage, prefix-cache hit rate)
+  - [ ] tests with the official `openai` Python client; HTTP load-test client; Dockerfile
+  - [ ] tag `v1.0`
+
+### Tier 2
+- **M7: speculative decoding**
+  - [ ] proposers: draft model (own paged cache) and n-gram prompt lookup
+  - [ ] verify k draft tokens in one target forward; lossless rejection sampling (Leviathan et al. 2023,
+        Chen et al. 2023); KV rollback of rejected slots
+  - [ ] tests: greedy output identical to non-speculative; sampled distribution matches the target (statistical test)
+  - [ ] benchmarks: acceptance rate, tokens per step, speedup vs k, per workload
+- **M8: quantization**
+  - [ ] int8 weight-only (per-channel) and int4 weight-only (group-wise, RTN) linear layers using fast CPU kernels where available
+  - [ ] optional activation-aware scaling (AWQ-style) for int4
+  - [ ] int8 KV cache (per-token-head scales) to double cache capacity
+  - [ ] eval: WikiText-2 perplexity, greedy agreement with fp32, decode speed, memory
+- **M9: kernels and performance**
+  - [ ] C++/OpenMP paged-attention decode kernel (torch C++ extension) vs gather + SDPA
+  - [ ] profiling breakdown (attention / matmul / sampler / Python overhead) and overhead cuts
+  - [ ] `torch.compile` on the decode step if it pays off on CPU
+
+### Tier 3 (if time permits, pick by value)
+- [ ] structured output: JSON-schema / regex constrained decoding with token-mask FSMs
+- [ ] multi-LoRA serving: many adapters in one batch (S-LoRA/Punica idea), e.g. the hijack-proof Qwen3 adapter
+- [ ] tensor parallelism across processes (torch.distributed, gloo), exact-output check
+- [ ] Gradio or web demo with live engine metrics
+
+### Final
+- [ ] `docs/report.md`: design, every experiment, honest limitations
+- [ ] README final: headline results, charts, architecture diagram, quickstart
+
+## Benchmark methodology (fixed before measuring)
+- One heavy job at a time on the machine; `torch.set_num_threads(4)`; warm-up run discarded.
+- Throughput comparisons use the same prompts, the same output lengths (`ignore_eos` + fixed
+  `max_tokens`, as in vLLM's benchmarks) and greedy decoding for every system.
+- Report medians over >= 3 repeats for offline throughput; latency percentiles from >= 100 requests
+  for online runs. Include the HF baselines in every headline comparison.
+- A speedup is only claimed when outputs are checked to match (greedy) or the method is provably
+  lossless (speculative decoding).
+
+## Decision log
+- **D1 (2026-11-03): project choice.** The owner chose an LLM inference engine (vs. a wearable-sensor
+  foundation model or RAG). Reason: the resume covers training/alignment (hijack-proof-llm),
+  recommenders and agents; serving systems are the gap. Time budget: up to 2 weeks, working
+  autonomously.
+- **D2: fp32 compute.** The CPU has no bf16 or AMX support, so bf16 would be emulated and slow.
+  Models run in fp32; quantization (M8) is the memory/speed lever.
+- **D3: own model code.** Writing the transformer ourselves (not wrapping HF modules) is what lets the
+  engine own the KV layout, batching and attention. HF stays as a correctness oracle.
