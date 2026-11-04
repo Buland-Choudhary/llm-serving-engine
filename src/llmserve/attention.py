@@ -124,14 +124,51 @@ class AttentionMetadata:
         return self._prefill_masks[i]
 
 
-def write_kv(
-    k_cache: torch.Tensor,
-    v_cache: torch.Tensor,
-    k: torch.Tensor,
-    v: torch.Tensor,
-    slots: torch.Tensor,
-) -> None:
+class QuantizedKV:
+    """One layer's K (or V) cache stored as int8 with one float scale per (token slot, kv head).
+
+    Symmetric absmax quantization: ``x ~= data * scale``, ``scale = max|x| / 127`` over the head
+    dimension. 1 byte per element plus 4 bytes per head row: ``(D + 4) / (4 D)`` of the fp32
+    cache (0.27x for D = 64), so ~3.8x more tokens fit in the same memory.
+    """
+
+    def __init__(self, num_slots: int, kv_heads: int, head_dim: int, device="cpu") -> None:
+        self.data = torch.zeros(num_slots, kv_heads, head_dim, dtype=torch.int8, device=device)
+        self.scale = torch.zeros(num_slots, kv_heads, dtype=torch.float32, device=device)
+
+    @staticmethod
+    def quantize(x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        x = x.float()
+        s = x.abs().amax(-1).clamp_min(1e-8) / 127.0
+        return (x / s[..., None]).round_().clamp_(-127, 127).to(torch.int8), s
+
+    def write(self, slots: torch.Tensor, x: torch.Tensor) -> None:
+        q, s = self.quantize(x)
+        self.data.index_copy_(0, slots, q)
+        self.scale.index_copy_(0, slots, s)
+
+    def rows(self, idx: torch.Tensor) -> torch.Tensor:
+        """Dequantized rows (float32) for slot indices of any shape."""
+        return self.data[idx].float() * self.scale[idx].unsqueeze(-1)
+
+    def copy_rows(self, dst: torch.Tensor, src: torch.Tensor) -> None:
+        self.data[dst] = self.data[src]
+        self.scale[dst] = self.scale[src]
+
+    def nbytes(self) -> int:
+        return self.data.numel() + self.scale.numel() * 4
+
+
+def _rows(cache, idx: torch.Tensor) -> torch.Tensor:
+    return cache.rows(idx) if isinstance(cache, QuantizedKV) else cache[idx]
+
+
+def write_kv(k_cache, v_cache, k: torch.Tensor, v: torch.Tensor, slots: torch.Tensor) -> None:
     """Scatter new K/V ([T, Hk, D]) into flat cache tensors ([num_slots, Hk, D])."""
+    if isinstance(k_cache, QuantizedKV):
+        k_cache.write(slots, k)
+        v_cache.write(slots, v)
+        return
     k_cache.index_copy_(0, slots, k)
     v_cache.index_copy_(0, slots, v)
 
@@ -151,8 +188,8 @@ def paged_attention(
 
     for i, p in enumerate(meta.prefills):
         qi = q[p.q_start : p.q_start + p.q_len].transpose(0, 1).unsqueeze(0)  # [1, Hq, q, D]
-        ki = k_cache[p.slots].transpose(0, 1).unsqueeze(0)  # [1, Hk, ctx, D]
-        vi = v_cache[p.slots].transpose(0, 1).unsqueeze(0)
+        ki = _rows(k_cache, p.slots).transpose(0, 1).unsqueeze(0)  # [1, Hk, ctx, D]
+        vi = _rows(v_cache, p.slots).transpose(0, 1).unsqueeze(0)
         mask = meta.prefill_mask(i)
         oi = F.scaled_dot_product_attention(
             qi, ki, vi, attn_mask=mask, is_causal=mask is None, scale=scale, enable_gqa=True
@@ -162,6 +199,22 @@ def paged_attention(
     if meta.decode_block_tables is not None:
         from llmserve.kernels import load_paged_attention, paged_attention_op
 
+        if isinstance(k_cache, QuantizedKV):
+            od = load_paged_attention().paged_attention_decode_int8(
+                q[meta.decode_token_idx].contiguous(),
+                k_cache.data,
+                v_cache.data,
+                k_cache.scale,
+                v_cache.scale,
+                meta.decode_block_tables,
+                meta.decode_ctx_lens,
+                meta.block_size,
+                scale,
+            )
+            if not meta.prefills:
+                return od
+            out[meta.decode_token_idx] = od
+            return out
         if not meta.prefills:  # pure decode batch: every token is a decode token, in order
             return paged_attention_op()(
                 q.contiguous(),
@@ -185,8 +238,8 @@ def paged_attention(
         out[meta.decode_token_idx] = od
     elif meta.decode_token_idx is not None:
         qd = q[meta.decode_token_idx].unsqueeze(2)  # [B, Hq, 1, D]
-        kd = k_cache[meta.decode_slots].transpose(1, 2)  # [B, Hk, ctx, D]
-        vd = v_cache[meta.decode_slots].transpose(1, 2)
+        kd = _rows(k_cache, meta.decode_slots).transpose(1, 2)  # [B, Hk, ctx, D]
+        vd = _rows(v_cache, meta.decode_slots).transpose(1, 2)
         od = F.scaled_dot_product_attention(
             qd, kd, vd, attn_mask=meta.decode_mask, scale=scale, enable_gqa=True
         )

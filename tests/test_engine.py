@@ -154,3 +154,29 @@ def test_nonchunked_long_prompt_is_not_starved(tiny_llama_dir):
                 assert o.outputs[0].token_ids  # got its first token within a few steps
                 return
     raise AssertionError("long prompt was starved")
+
+
+def test_int8_kv_cache_engine(tiny_llama_dir):
+    """int8 KV: ~3.6x more blocks in the same memory, prefix caching still works, and greedy
+    output mostly agrees with the fp32 KV cache on a tiny random model."""
+    from llmserve.attention import QuantizedKV
+
+    prompts = _prompts(6)
+    prompts = prompts + [prompts[1][:20] + [5, 6]]  # shares a prefix -> cache hit
+    outs, blocks = {}, {}
+    for dt in ("auto", "int8"):
+        eng = make_engine(
+            tiny_llama_dir, kv_cache_dtype=dt, num_kv_blocks=None, kv_cache_memory_gb=2**-10
+        )
+        blocks[dt] = eng.block_manager.num_blocks
+        if dt == "int8":
+            assert isinstance(eng.kv_cache.layers[0][0], QuantizedKV)
+        outs[dt] = _generate(eng, prompts)
+    d = eng.model_cfg.head_dim  # fp32 row: 4*d bytes; int8 row: d bytes + one fp32 scale
+    assert blocks["int8"] >= 0.95 * blocks["auto"] * 4 * d / (d + 4)
+    pairs = [
+        (a, b)
+        for x, y in zip(outs["auto"], outs["int8"], strict=True)
+        for a, b in zip(x, y, strict=True)
+    ]
+    assert sum(a == b for a, b in pairs) / len(pairs) > 0.8

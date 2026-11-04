@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import torch
 
-from llmserve.attention import AttentionMetadata, resolve_backend
+from llmserve.attention import AttentionMetadata, QuantizedKV, resolve_backend
 from llmserve.kv_cache import KVCache
 from llmserve.lora import set_batch_adapters
 from llmserve.models.transformer import CausalLM
@@ -29,6 +29,10 @@ class ModelRunner:
         src = torch.cat([torch.arange(s * bs, (s + 1) * bs) for s, _ in copies])
         dst = torch.cat([torch.arange(d * bs, (d + 1) * bs) for _, d in copies])
         for k, v in self.cache.layers:
+            if isinstance(k, QuantizedKV):
+                k.copy_rows(dst, src)
+                v.copy_rows(dst, src)
+                continue
             k[dst] = k[src]
             v[dst] = v[src]
 

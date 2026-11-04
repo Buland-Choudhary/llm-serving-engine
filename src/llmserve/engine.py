@@ -27,6 +27,7 @@ class EngineConfig:
     block_size: int = 16
     kv_cache_memory_gb: float = 2.0  # used when num_kv_blocks is None
     num_kv_blocks: int | None = None
+    kv_cache_dtype: str = "auto"  # auto (= model dtype) | int8 (per-token-per-head scales)
     max_model_len: int = 4096
     max_num_seqs: int = 64
     max_num_batched_tokens: int = 1024
@@ -91,6 +92,8 @@ class LLMEngine:
 
                 tokenizer = AutoTokenizer.from_pretrained(str(path))
         self.model = model
+        if cfg.compile and cfg.kv_cache_dtype != "auto":
+            raise ValueError("compile=True supports only the fp32 KV cache")
         if cfg.compile:
             # Inductor freezing turns the weights (including our prepacked oneDNN ones) into graph
             # constants, which its oneDNN lowering requires.
@@ -103,9 +106,15 @@ class LLMEngine:
         self.model_cfg = model.cfg
         dtype_bytes = torch.tensor([], dtype=dtype).element_size()
         num_blocks = cfg.num_kv_blocks or KVCache.blocks_for_memory(
-            model.cfg, int(cfg.kv_cache_memory_gb * 2**30), cfg.block_size, dtype_bytes
+            model.cfg,
+            int(cfg.kv_cache_memory_gb * 2**30),
+            cfg.block_size,
+            dtype_bytes,
+            cfg.kv_cache_dtype,
         )
-        self.kv_cache = KVCache(model.cfg, num_blocks, cfg.block_size, dtype, cfg.device)
+        self.kv_cache = KVCache(
+            model.cfg, num_blocks, cfg.block_size, dtype, cfg.device, cfg.kv_cache_dtype
+        )
         self.block_manager = BlockManager(num_blocks, cfg.block_size, cfg.enable_prefix_caching)
         self.scheduler = Scheduler(cfg.scheduler_config(), self.block_manager)
         self.runner = ModelRunner(model, self.kv_cache, cfg.attention_backend)

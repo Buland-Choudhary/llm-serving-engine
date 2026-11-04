@@ -11,6 +11,7 @@ from collections import deque
 
 import torch
 
+from llmserve.attention import QuantizedKV
 from llmserve.config import ModelConfig
 
 
@@ -24,10 +25,20 @@ class KVCache:
         block_size: int,
         dtype: torch.dtype = torch.float32,
         device: str | torch.device = "cpu",
+        kv_dtype: str = "auto",
     ) -> None:
         self.num_blocks = num_blocks
         self.block_size = block_size
+        self.kv_dtype = kv_dtype
         shape = (num_blocks * block_size, cfg.num_key_value_heads, cfg.head_dim)
+        if kv_dtype == "int8":
+            self.layers = [
+                (QuantizedKV(*shape, device), QuantizedKV(*shape, device))
+                for _ in range(cfg.num_hidden_layers)
+            ]
+            return
+        if kv_dtype != "auto":
+            raise ValueError(f"kv_dtype must be 'auto' or 'int8', got {kv_dtype!r}")
         self.layers = [
             (
                 torch.zeros(shape, dtype=dtype, device=device),
@@ -38,11 +49,16 @@ class KVCache:
 
     @staticmethod
     def blocks_for_memory(
-        cfg: ModelConfig, mem_bytes: int, block_size: int, dtype_bytes: int = 4
+        cfg: ModelConfig, mem_bytes: int, block_size: int, dtype_bytes: int = 4, kv_dtype="auto"
     ) -> int:
-        return max(1, mem_bytes // (cfg.kv_bytes_per_token(dtype_bytes) * block_size))
+        per_token = cfg.kv_bytes_per_token(dtype_bytes)
+        if kv_dtype == "int8":  # 1 byte per element + one fp32 scale per (layer, head, K/V)
+            per_token = 2 * cfg.num_hidden_layers * cfg.num_key_value_heads * (cfg.head_dim + 4)
+        return max(1, mem_bytes // (per_token * block_size))
 
     def nbytes(self) -> int:
+        if self.kv_dtype == "int8":
+            return sum(k.nbytes() + v.nbytes() for k, v in self.layers)
         return sum(k.numel() * k.element_size() * 2 for k, _ in self.layers)
 
 
