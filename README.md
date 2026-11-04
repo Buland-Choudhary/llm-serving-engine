@@ -86,9 +86,16 @@ client = OpenAI(base_url="http://127.0.0.1:8000/v1", api_key="none")
 r = client.chat.completions.create(
     model="qwen3-0.6b",
     messages=[{"role": "user", "content": "Name a city and its population."}],
-    response_format={"type": "json_schema", "json_schema": {"name": "city", "schema": {
-        "type": "object",
-        "properties": {"city": {"type": "string"}, "population": {"type": "integer"}}}}},
+    response_format={
+        "type": "json_schema",
+        "json_schema": {
+            "name": "city",
+            "schema": {
+                "type": "object",
+                "properties": {"city": {"type": "string"}, "population": {"type": "integer"}},
+            },
+        },
+    },
 )
 print(r.choices[0].message.content)  # always valid JSON for that schema
 ```
