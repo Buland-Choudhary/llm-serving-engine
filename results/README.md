@@ -56,6 +56,17 @@ _CPU: Intel(R) Xeon(R) Processor @ 2.80GHz, 4 threads, fp32._
 
 ![online latency vs load](charts/online_smollm2-135m.png)
 
+## Chunked prefill (1024-token prompts arriving while others decode, budget 256)
+
+_CPU: Intel(R) Xeon(R) Processor @ 2.80GHz, 4 threads, fp32._
+
+| mode | rate req/s | TTFT p50 ms | TTFT p99 ms | TPOT p99 ms | ITL p99 ms | out tok/s |
+|---|---:|---:|---:|---:|---:|---:|
+| chunked | 0.5 | 13802 | 26324 | 567 | 976 | 27.2 |
+| nochunk | 0.5 | 9167 | 20143 | 506 | 631 | 28.9 |
+| chunked | 1 | 40097 | 71970 | 545 | 649 | 27.8 |
+| nochunk | 1 | 40673 | 76387 | 559 | 663 | 26.9 |
+
 ## Prefix caching (1024-token shared system prompt + 32-token question, 32 new tokens)
 
 _CPU: Intel(R) Xeon(R) Processor @ 2.10GHz, 4 threads, fp32._
@@ -126,6 +137,15 @@ _CPU: Intel(R) Xeon(R) Processor @ 2.80GHz, 4 threads, fp32._
 | int8-lmhead | single stream | 12.6 | 74 |
 | int8 | single stream | 11.7 | 82 |
 | int8 | offline batch | 60.8 | 838 |
+
+## Chunked prefill: stall test (8 decoding streams, a 2048-token prompt arrives)
+
+_CPU: Intel(R) Xeon(R) Processor @ 2.80GHz, 4 threads, fp32._
+
+| mode | long prompt TTFT s | stream gap p50 ms | stream gap p99 ms | stream max gap ms |
+|---|---:|---:|---:|---:|
+| no_chunk | 5.65 | 75 | 146 | 5766 |
+| chunked | 4.06 | 69 | 580 | 699 |
 
 ## Multi-LoRA (Qwen3-0.6B, two public adapters, 48 requests x 64 tokens)
 
