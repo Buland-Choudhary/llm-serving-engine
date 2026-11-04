@@ -103,6 +103,7 @@ class LLMEngine:
             self.eos_ids.add(tokenizer.eos_token_id)
         self.last_step = StepStats()
         self.total_steps = 0
+        self._guide_factory = None
         self.proposer = self._make_proposer(dtype)
         self.spec_stats = {"verify_seqs": 0, "proposed": 0, "accepted": 0, "emitted": 0}
 
@@ -142,6 +143,7 @@ class LLMEngine:
             or p.frequency_penalty
             or p.repetition_penalty != 1.0
             or len(seq.output_token_ids) < p.min_tokens
+            or seq.guide is not None
         ):
             return 0
         room = min(
@@ -196,11 +198,26 @@ class LLMEngine:
             raise ValueError(f"duplicate request id {rid}")
         req = Request(rid, text, ids, params, arrival_time)
         seq = Sequence(next(self._seq_ids), req, ids, index=0)
+        pattern = params.guided_pattern
+        if pattern is not None:
+            seq.guide = self._guides().get(pattern)
+            seq.guide_state = seq.guide.start
         self._init_detok(seq)
         req.seqs.append(seq)
         self.requests[rid] = req
         self.scheduler.add(seq)
         return rid
+
+    def _guides(self):
+        if self._guide_factory is None:
+            if self.tokenizer is None:
+                raise ValueError("structured output needs a tokenizer")
+            from llmserve.structured.guide import GuideFactory
+
+            self._guide_factory = GuideFactory(
+                self.tokenizer, self.model_cfg.vocab_size, self.eos_ids
+            )
+        return self._guide_factory
 
     def _init_detok(self, seq: Sequence) -> None:
         if self.detok is not None:
@@ -352,6 +369,7 @@ class LLMEngine:
         child = Sequence(next(self._seq_ids), parent.request, parent.prompt_token_ids, index=index)
         child.num_computed_tokens = parent.num_computed_tokens
         child.num_cached_tokens = parent.num_cached_tokens
+        child.guide, child.guide_state = parent.guide, parent.guide_state
         self.block_manager.fork(parent, child)
         self._init_detok(child)
         parent.request.seqs.append(child)
@@ -363,7 +381,14 @@ class LLMEngine:
         banned = []
         if len(seq.output_token_ids) < p.min_tokens:
             banned = sorted(self.eos_ids | set(p.stop_token_ids))
-        return SampleRow(p, seq.output_token_ids, seq.prompt_token_ids, seq.generator, banned)
+        allowed = None
+        if seq.guide is not None:
+            allowed = seq.guide.allowed_tokens(seq.guide_state)
+            if banned:
+                allowed = allowed[~torch.isin(allowed, torch.tensor(banned))]
+        return SampleRow(
+            p, seq.output_token_ids, seq.prompt_token_ids, seq.generator, banned, allowed
+        )
 
     def _append_token(self, seq, token, logprob, top, now) -> None:
         req = seq.request
@@ -373,6 +398,8 @@ class LLMEngine:
         if seq.index == 0:
             req.metrics.token_times.append(now)
         seq.output_token_ids.append(token)
+        if seq.guide is not None:
+            seq.guide_state = seq.guide.advance(seq.guide_state, token)
         if logprob is not None:
             seq.logprobs.append(logprob)
             seq.top_logprobs.append(top)
@@ -393,6 +420,8 @@ class LLMEngine:
                     : idx + (len(s) if p.include_stop_str_in_output else 0)
                 ]
                 reason, seq.stop_reason = "stop", s
+        if reason is None and seq.guide is not None and seq.guide.is_finished(seq.guide_state):
+            reason = "stop"
         if reason is None and (
             len(seq.output_token_ids) >= p.max_tokens or seq.num_tokens >= self.cfg.max_model_len
         ):

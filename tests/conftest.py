@@ -71,3 +71,36 @@ def run_all(engine: LLMEngine) -> dict:
             if o.finished:
                 done[o.request_id] = o
     return done
+
+
+CHAT_TEMPLATE = (
+    "{% for m in messages %}<{{ m['role'] }}>{{ m['content'] }}\n{% endfor %}"
+    "{% if add_generation_prompt %}<assistant>{% endif %}"
+)
+
+
+def byte_tokenizer():
+    """A 256-token byte-level tokenizer (one token per byte), matching the tiny model's vocab."""
+    from tokenizers import Tokenizer, decoders, models, pre_tokenizers
+    from transformers import PreTrainedTokenizerFast
+
+    alphabet = pre_tokenizers.ByteLevel.alphabet()
+    byte_to_char = sorted(alphabet, key=lambda ch: ord(ch))
+    vocab = {ch: i for i, ch in enumerate(byte_to_char)}
+    tk = Tokenizer(models.BPE(vocab=vocab, merges=[]))
+    tk.pre_tokenizer = pre_tokenizers.ByteLevel(add_prefix_space=False, use_regex=False)
+    tk.decoder = decoders.ByteLevel()
+    t = PreTrainedTokenizerFast(tokenizer_object=tk)
+    t.eos_token = byte_to_char[0]
+    t.chat_template = CHAT_TEMPLATE
+    return t
+
+
+def make_text_engine(ckpt_dir, **kw):
+    """Tiny engine with the byte tokenizer (text prompts, detokenization, structured output)."""
+    from llmserve.detokenizer import IncrementalDetokenizer
+
+    eng = make_engine(ckpt_dir, **kw)
+    eng.tokenizer = byte_tokenizer()
+    eng.detok = IncrementalDetokenizer(eng.tokenizer)
+    return eng

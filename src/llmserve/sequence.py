@@ -45,6 +45,8 @@ class Sequence:
         self.num_preemptions = 0
         self.spec_tokens: list[int] = []  # proposed draft tokens awaiting verification
         self.spec_probs = None  # their draft distributions (None = deterministic proposer)
+        self.guide = None  # structured-output guide (shared per pattern)
+        self.guide_state = 0
         self.finish_reason: str | None = None
         self.stop_reason: str | int | None = None
         self.logprobs: list[float] = []

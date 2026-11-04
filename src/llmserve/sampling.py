@@ -32,8 +32,17 @@ class SamplingParams:
     seed: int | None = None
     logprobs: int | None = None  # number of top logprobs to return per token (0 = sampled only)
     include_stop_str_in_output: bool = False
+    # structured output (at most one): the whole completion must match
+    guided_regex: str | None = None
+    guided_json: dict | None = None
+    guided_choice: list[str] | None = None
 
     def __post_init__(self) -> None:
+        if (
+            sum(x is not None for x in (self.guided_regex, self.guided_json, self.guided_choice))
+            > 1
+        ):
+            raise ValueError("use at most one of guided_regex / guided_json / guided_choice")
         if isinstance(self.stop, str):
             self.stop = [self.stop]
         if self.n < 1:
@@ -52,6 +61,18 @@ class SamplingParams:
             raise ValueError("max_tokens must be >= 1")
 
     @property
+    def guided_pattern(self) -> str | None:
+        from llmserve.structured.json_schema import choice_regex, schema_to_regex
+
+        if self.guided_regex is not None:
+            return self.guided_regex
+        if self.guided_json is not None:
+            return schema_to_regex(self.guided_json)
+        if self.guided_choice is not None:
+            return choice_regex(self.guided_choice)
+        return None
+
+    @property
     def greedy(self) -> bool:
         return self.temperature < 1e-5
 
@@ -65,6 +86,7 @@ class SampleRow:
     prompt_token_ids: list[int]
     generator: torch.Generator | None
     banned_token_ids: list[int] = field(default_factory=list)  # e.g. EOS before min_tokens
+    allowed_token_ids: torch.Tensor | None = None  # structured output: only these tokens
 
 
 @dataclass
@@ -136,6 +158,10 @@ def sample(logits: torch.Tensor, rows: list[SampleRow]) -> SamplerOutput:
 
     logits = apply_penalties(logits, rows)
     for i, r in enumerate(rows):
+        if r.allowed_token_ids is not None:
+            keep = logits[i, r.allowed_token_ids]
+            logits[i] = _NEG_INF
+            logits[i, r.allowed_token_ids] = keep
         if r.banned_token_ids:
             logits[i, r.banned_token_ids] = _NEG_INF
 

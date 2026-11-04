@@ -34,6 +34,19 @@ class _SamplingFields(BaseModel):
     ignore_eos: bool = False
     stop_token_ids: list[int] = Field(default_factory=list)
     include_stop_str_in_output: bool = False
+    guided_json: dict | None = None
+    guided_regex: str | None = None
+    guided_choice: list[str] | None = None
+    response_format: dict | None = None  # {"type": "json_schema", "json_schema": {"schema": ...}}
+
+    def _guided_json(self) -> dict | None:
+        rf = self.response_format
+        if rf and rf.get("type") == "json_schema":
+            js = rf.get("json_schema") or {}
+            return js.get("schema", js)
+        if rf and rf.get("type") not in (None, "text"):
+            raise ValueError(f"response_format type {rf.get('type')!r} is not supported")
+        return self.guided_json
 
     def sampling_params(self, default_max_tokens: int, logprobs: int | None) -> SamplingParams:
         return SamplingParams(
@@ -53,6 +66,9 @@ class _SamplingFields(BaseModel):
             seed=self.seed,
             logprobs=logprobs,
             include_stop_str_in_output=self.include_stop_str_in_output,
+            guided_json=self._guided_json(),
+            guided_regex=self.guided_regex,
+            guided_choice=self.guided_choice,
         )
 
 
