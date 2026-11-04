@@ -177,7 +177,7 @@ _K_STATS: list | None = None
 
 
 @torch.inference_mode()
-def calibrate_k_smoothing(model, ids: list[int], alpha: float = 0.5) -> list[torch.Tensor]:
+def calibrate_k_smoothing(model, ids: list[int], alpha: float = 1.0) -> list[torch.Tensor]:
     """Per-layer key smoothing factors ``s = max|K_c| ** alpha`` (per kv head and channel),
     from one fp32 prefill of ``ids``. Normalized to mean 1 per head."""
     global _K_STATS

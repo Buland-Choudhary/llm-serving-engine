@@ -381,7 +381,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--max-model-len", type=int, default=4096)
     ap.add_argument("--kv-cache-gb", type=float, default=2.0)
     ap.add_argument("--kv-cache-dtype", choices=["auto", "int8"], default="auto")
-    ap.add_argument("--kv-k-smooth", type=float, default=0.5, help="int8 KV key smoothing alpha")
+    ap.add_argument("--kv-k-smooth", type=float, default=1.0, help="int8 KV key smoothing alpha")
     ap.add_argument("--no-chunked-prefill", action="store_true")
     ap.add_argument("--no-prefix-caching", action="store_true")
     ap.add_argument("--default-max-tokens", type=int, default=256)

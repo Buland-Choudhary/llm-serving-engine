@@ -36,7 +36,7 @@ class EngineConfig:
     kv_cache_memory_gb: float = 2.0  # used when num_kv_blocks is None
     num_kv_blocks: int | None = None
     kv_cache_dtype: str = "auto"  # auto (= model dtype) | int8 (per-token-per-head scales)
-    kv_k_smooth: float | None = 0.5  # int8 KV: per-channel key smoothing exponent (None = off)
+    kv_k_smooth: float | None = 1.0  # int8 KV: per-channel key smoothing exponent (None = off)
     max_model_len: int = 4096
     max_num_seqs: int = 64
     max_num_batched_tokens: int = 1024

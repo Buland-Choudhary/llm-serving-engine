@@ -1,0 +1,7 @@
+# int8 KV with per-channel key smoothing (alpha = exponent of the per-channel |K| max)
+.venv/bin/python benchmarks/kv_int8_agreement.py --model qwen3-0.6b --num-requests 30 --kv-k-smooth 0.5 --out results/m10/agreement/qwen3-0.6b__smooth0.5.json
+.venv/bin/python benchmarks/kv_int8_agreement.py --model qwen3-0.6b --num-requests 30 --kv-k-smooth 1.0 --out results/m10/agreement/qwen3-0.6b__smooth1.0.json
+.venv/bin/llmserve ppl --model qwen3-0.6b --kv-cache-dtype int8 --kv-k-smooth 0.5 --out results/m10/ppl/qwen3-0.6b__kv-int8-smooth0.5.json
+.venv/bin/llmserve ppl --model qwen3-0.6b --kv-cache-dtype int8 --kv-k-smooth 1.0 --out results/m10/ppl/qwen3-0.6b__kv-int8-smooth1.0.json
+.venv/bin/python benchmarks/kv_int8_agreement.py --model smollm2-135m --kv-k-smooth 0.5 --out results/m10/agreement/smollm2-135m__smooth0.5.json
+.venv/bin/llmserve ppl --model smollm2-135m --kv-cache-dtype int8 --kv-k-smooth 0.5 --out results/m10/ppl/smollm2-135m__kv-int8-smooth0.5.json

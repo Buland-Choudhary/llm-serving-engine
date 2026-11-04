@@ -485,12 +485,15 @@ def m10_report(root: Path) -> str:
             "WikiText-2 perplexity (fp32 weights; only the KV cache dtype changes). "
             + cpu_note(ppl),
             "",
-            "| model | fp32 KV | int8 KV | change |",
-            "|---|---:|---:|---:|",
+            "| model | KV cache | perplexity | vs fp32 KV |",
+            "|---|---|---:|---:|",
         ]
         for m in sorted({k.split("__")[0] for k in ppl}):
-            a, b = ppl[f"{m}__kv-fp32"]["ppl"], ppl[f"{m}__kv-int8"]["ppl"]
-            out.append(f"| {m} | {a:.3f} | {b:.3f} | {100 * (b / a - 1):+.2f}% |")
+            base = ppl[f"{m}__kv-fp32"]["ppl"]
+            for k in sorted(x for x in ppl if x.startswith(m + "__")):
+                v = ppl[k]["ppl"]
+                label = k.split("__")[1].replace("kv-", "").replace("-smooth", ", key smoothing a=")
+                out.append(f"| {m} | {label} | {v:.3f} | {100 * (v / base - 1):+.2f}% |")
         out.append("")
     ag = load(d / "agreement")
     if ag:

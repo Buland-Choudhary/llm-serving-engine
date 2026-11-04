@@ -21,15 +21,16 @@ table in [`results/README.md`](results/README.md)).
 | | result |
 |---|---|
 | **Throughput vs HF transformers** (SmolLM2-135M, 200 ShareGPT requests) | **274 vs 19 tok/s (14x)** one-request-at-a-time; **6x** vs HF static batching |
-| **vs llama.cpp server** (SmolLM2-135M, same F32 weights, same load tester, best llama.cpp config) | **1.6x** offline throughput (369.5 vs 231.6 tok/s) and TTFT p99 0.37 s vs 3.8 s at 4 req/s; llama.cpp streams **2.3x** faster at light load (TPOT 21.6 vs 50.5 ms at 1 req/s), where our Python per-step overhead dominates ([details](docs/report.md#8a-head-to-head-with-llamacpp-session-2)) |
+| **vs llama.cpp server** (SmolLM2-135M, same F32 weights, same load tester, best llama.cpp config) | **2.1x** offline throughput (503.9 vs 238.7 tok/s) and TTFT p99 0.35 s vs 1.96 s at 4 req/s; llama.cpp streams **1.8x** faster at light load (TPOT 18.8 vs 34.4 ms at 1 req/s) ([details](docs/report.md#8a-head-to-head-with-llamacpp-session-2)) |
+| **Fused C++ elementwise kernels** (add+RMSNorm, RoPE+q/k-norm, SiLU*up) | decode step **-15 to -18%** on SmolLM2, -5 to -9% on Qwen3 ([table](results/microbench/decode_step.md)) |
 | **Serving under load** (Poisson arrivals, 1.5 req/s) | **99%** of requests meet a 2 s TTFT / 250 ms TPOT SLO (TTFT p99 0.89 s) vs **1%** for HF static batching (TTFT p99 179 s) |
 | **Chunked prefill** (2048-token prompt arrives while 8 streams decode) | worst decode stall **5.8 s -> 0.7 s** |
 | **Prefix caching** (shared 1024-token system prompt) | TTFT p50 **0.26 s vs 31.8 s** without it; **2.8x** throughput (SmolLM2-135M), **4x** (Qwen3-0.6B) |
 | **Speculative decoding** (SmolLM2-1.7B, single stream) | **2.9x** faster with n-gram lookup on a rewrite task (91% acceptance), **1.4x** with a 135M draft model on chat; correctly *slower* (0.85-0.91x) at batch 8 |
 | **Custom C++ kernels** | paged attention **2.3x** end-to-end throughput over gather + SDPA; int8 GEMV **3x** faster than fp32 per layer at batch 1, where PyTorch's int8 kernel is 3x *slower* |
-| **Attention kernel v2 + int8 KV cache** | split-context AVX-512 kernel up to **1.6x** faster than v1 at batch 1 / long contexts ([microbench](results/microbench/attention.md)); int8 KV holds **3.8x** more tokens per GB: under a tight KV budget **1.43x** throughput (254 -> 0 preemptions), **+24%** on Qwen3 long-prefix serving; perplexity +0.09% (SmolLM2) / +2.2% (Qwen3), but greedy outputs diverge more on Qwen3 |
+| **Attention kernel v2 + int8 KV cache** | split-context AVX-512 kernel up to **1.6x** faster than v1 at batch 1 / long contexts ([microbench](results/microbench/attention.md)); int8 KV holds **3.8x** more tokens per GB: under a tight KV budget **1.43x** throughput (254 -> 0 preemptions), **+24%** on Qwen3 long-prefix serving. Per-channel key smoothing (SmoothQuant-style) took Qwen3 from **3% to 87%** identical greedy outputs vs fp32 KV and perplexity from +2.2% to **+0.03%** |
 | **Quantization** (Qwen3-0.6B) | int8: **1.7-1.8x** faster single-stream decode at +2% perplexity; int4 + AWQ-style scaling: 4x smaller linear layers at +8-13% perplexity (plain int4: +18-35%) |
-| **Correctness** | 104 tests: HF logit/greedy parity, every optimization vs the plain path, lossless speculative sampling (statistical test), every structured-output sample parses and validates |
+| **Correctness** | -2 tests: HF logit/greedy parity, every optimization vs the plain path, lossless speculative sampling (statistical test), every structured-output sample parses and validates |
 
 ## What is inside
 
@@ -59,11 +60,12 @@ Design notes, with the reasoning and the measurements behind each choice:
 | Feature | Where | Verified by |
 |---|---|---|
 | Transformer from scratch (RoPE, GQA, SwiGLU, Qwen3 q/k-norm, fused projections) | `models/` | logits within 3e-5 of HF, identical greedy tokens |
+| Fused C++ elementwise kernels (residual+RMSNorm, RoPE+q/k-norm, SiLU*up) | `kernels/csrc/fused_ops.cpp` | vs the plain module path (logits, greedy) |
 | Paged KV cache + block allocator | `kv_cache.py`, `block_manager.py` | allocator invariants, paged == contiguous |
 | Continuous batching, chunked prefill, preemption | `scheduler.py` | same output with each feature on/off |
 | Prefix caching (hash chain, LRU) and copy-on-write | `block_manager.py` | hit/eviction tests, identical outputs |
 | C++ paged-attention kernel (split context, online softmax, AVX-512, GQA-grouped) | `kernels/csrc/paged_attention.cpp` | vs PyTorch reference, dense SDPA, v1 kernel |
-| int8 KV cache (per-token-per-head scales, dequantized in the kernel) | `attention.py` (`QuantizedKV`) | vs fp32-KV attention; vs dequantized reference |
+| int8 KV cache (per-token-per-head scales, per-channel key smoothing, dequantized in the kernel) | `attention.py` (`QuantizedKV`) | vs fp32-KV attention; vs dequantized reference; smoothing lowers error on outlier keys |
 | Speculative decoding (n-gram, draft model) | `spec_decode/` | identical greedy output; distribution test |
 | int8 (own GEMV + W8A8 `_int_mm`) / int4 (own GEMV) / AWQ-style scaling | `quant.py`, `kernels/csrc/int8_gemv.cpp` | vs dequantized reference; WikiText-2 perplexity |
 | Structured output: regex -> byte DFA, JSON schema -> regex | `structured/` | vs Python `re`; every sample validated |
@@ -143,12 +145,12 @@ scripts/run_queues.sh benchmarks/queues/m4_offline.txt benchmarks/queues/m4m5_on
 * **W8A8 costs a little quality.** int8 uses exact weight-only math for decode (<= 4 rows) and
   quantizes activations for larger batches, which is where the +2% perplexity comes from
   (weight-only int8 alone measured +0.3%).
-* **int8 KV costs real quality on Qwen3.** Perplexity rises only 2.2%, but only 3% of 128-token
-  greedy outputs stay identical to fp32 KV (SmolLM2: 42%). It is a capacity lever for memory
-  pressure, off by default. fp32 attention is already at this VM's memory bandwidth for large
+* **int8 KV is opt-in.** Without key smoothing it cost Qwen3 real quality (3% identical greedy
+  outputs); with smoothing 87% stay identical (30 prompts), so some outputs still differ from
+  fp32 KV. fp32 attention is already at this VM's memory bandwidth for large
   batches, so the v2 kernel helps most at batch 1 (+4-5% end to end).
-* **llama.cpp is faster at light load** (2.3x lower TPOT at 1 req/s): our per-step Python
-  overhead dominates a 135M model when few requests are running.
+* **llama.cpp is faster at light load** (1.8x lower TPOT at 1 req/s, down from 2.3x before the
+  fused kernels); with Q8_0 its single-stream path is much faster than our int8 one.
 * **torch.compile did not help** (198.6 vs 208.3 tok/s): the linear layers already use the same
   prepacked oneDNN kernels Inductor would pick, and shape changes trigger recompiles. It is off by
   default.
@@ -161,7 +163,7 @@ scripts/run_queues.sh benchmarks/queues/m4_offline.txt benchmarks/queues/m4m5_on
 | Path | What |
 |---|---|
 | `src/llmserve/` | engine, model, kernels, server |
-| `tests/` | 104 tests on tiny random models (CI) + real-checkpoint tests (`-m slow`) |
+| `tests/` | -2 tests on tiny random models (CI) + real-checkpoint tests (`-m slow`) |
 | `benchmarks/` | workloads, queues, microbenchmarks, report builder |
 | `results/` | every result JSON, tables and charts |
 | `docs/` | design notes, report, screenshots |

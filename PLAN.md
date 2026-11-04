@@ -159,8 +159,15 @@ Tier 1 (core engine + API) is finished and tagged `v1.0` before Tier 2 starts.
 - **D12 (2026-11-04): llama.cpp gets its best configuration.** Its default 64-slot setup reached
   179 tok/s offline; a sweep (flash attention, 16/32/64 slots, unified KV) found `-kvu` best
   (232 tok/s), and that config is the one compared. Q8_0 vs our int8 is a separate, labeled row.
-- **D13: int8 KV is off by default.** Good perplexity but low greedy agreement on Qwen3 (3%
-  identical outputs); it is a memory-pressure option. Per-channel key scales are the next step.
+- **D13: int8 KV is off by default.** Without smoothing Qwen3 kept only 3% identical greedy
+  outputs. Per-channel key smoothing (D15) raised that to 87%; it stays opt-in because outputs
+  still differ from fp32 KV sometimes.
+- **D15 (2026-11-04): key smoothing instead of KIVI-style per-channel quantization.** Per-channel
+  scales over tokens need re-quantization as paged blocks fill; a static per-channel smoothing
+  vector (calibrated once at load, folded into q) keeps the per-token layout and the kernel
+  unchanged. alpha = 1.0 default (best of 0.5 / 1.0 on agreement and perplexity).
+- **D16: fused elementwise kernels by hand.** torch.compile could not fuse them profitably
+  (recompiles); four hand-written C++ kernels cut the decode step 15-18% (SmolLM2).
 - **D14: Hugging Face Space demo (item 4) skipped**: no `HF_TOKEN` in the environment.
 - **D3: own model code.** Writing the transformer ourselves (not wrapping HF modules) is what lets the
   engine own the KV layout, batching and attention. HF stays as a correctness oracle.

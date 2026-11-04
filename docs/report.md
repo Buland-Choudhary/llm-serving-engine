@@ -203,30 +203,39 @@ requests), one server at a time, same session and CPU. Before measuring, both pr
 16/32/64 slots, unified KV); its best, `-kvu`, is used below (180 -> 232 tok/s offline).
 Driver: `benchmarks/llamacpp_compare.sh`; results: `results/llamacpp/`.
 
+Measured twice. The table is the second run, after the fused elementwise kernels (section 8c)
+landed; llama.cpp was re-measured in the same session (238.7 vs 231.6 tok/s offline the first
+time, i.e. stable). The first run is kept in `results/llamacpp/before_fused_ops/`.
+
 | SmolLM2-135M, fp32 | llmserve | llama.cpp (-kvu) |
 |---|---|---|
-| offline throughput (200 requests at t=0) | **369.5 tok/s** | 231.6 tok/s |
-| 1 req/s: TTFT p50 / TPOT p50 | 110 ms / 50.5 ms | **52 ms / 21.6 ms** |
-| 2 req/s: TTFT p50 / TPOT p50 | 141 ms / 68.7 ms | **87 ms / 45.1 ms** |
-| 4 req/s: TTFT p99 / TPOT p50 | **367 ms / 117 ms** | 3842 ms / 181 ms |
-| extra row, 8-bit weights, offline: our int8 vs their Q8_0 | **314.6 tok/s** | 292.4 tok/s |
-| extra row, 8-bit weights, 2 req/s: TPOT p50 | 75.9 ms | **10.9 ms** |
+| offline throughput (200 requests at t=0) | **503.9 tok/s** | 238.7 tok/s |
+| 1 req/s: TTFT p50 / TPOT p50 | 74 ms / 34.4 ms | **47 ms / 18.8 ms** |
+| 2 req/s: TTFT p50 / TPOT p50 | 85 ms / 42.6 ms | **68 ms / 34.5 ms** |
+| 4 req/s: TTFT p99 / TPOT p50 | **347 ms / 73.4 ms** | 1961 ms / 166.1 ms |
+| extra row, 8-bit weights, offline: our int8 vs their Q8_0 | **398.8 tok/s** | 295.9 tok/s |
+| extra row, 8-bit weights, 2 req/s: TPOT p50 | 55.8 ms | **10.5 ms** |
+
+First run (before fused ops): offline 369.5 vs 231.6 tok/s; TPOT at 1 req/s 50.5 vs 21.6 ms.
 
 _CPU: 4-vCPU "Intel(R) Xeon(R) Processor" (AVX-512, AMX flags), no GPU._
 
-**Where llama.cpp wins: light load.** With few concurrent requests it streams tokens 2.3x
-faster (TPOT 21.6 vs 50.5 ms at 1 req/s; 10.9 ms with Q8_0). Each of our steps runs a Python
-scheduler, builds metadata and launches ~30 layers of PyTorch ops; at batch sizes of 1-4 that
-fixed overhead dominates a 135M model, while llama.cpp is a single C++ graph with hand-written
-SIMD kernels (its Q8_0 dot products are especially tight).
-
-**Where llmserve wins: load.** Offline it delivers 1.6x the throughput (369.5 vs 231.6 tok/s),
-and at 4 req/s llama.cpp falls behind the arrival rate (TTFT p99 3.8 s vs 0.37 s). Batched
+**Where llmserve wins: load.** Offline it delivers 2.1x the throughput (503.9 vs 238.7 tok/s),
+and at 4 req/s llama.cpp falls behind the arrival rate (TTFT p99 1.96 s vs 0.35 s). Batched
 decode is GEMM-bound: our linears use prepacked oneDNN fp32 kernels, which scale with batch
 better than ggml's F32 matmul. llama.cpp's own `llama-batched-bench` (no HTTP) decodes at 223
 tok/s at batch 64 (`results/llamacpp/llama_batched_bench_f32.txt`), close to its server number,
-so the gap is in the compute path, not HTTP overhead. With 8-bit weights the offline gap
-shrinks to 1.08x (ggml is built around quantized types).
+so the gap is in the compute path, not HTTP overhead.
+
+**Where llama.cpp wins: light load.** At 1 req/s it streams tokens 1.8x faster (TPOT 18.8 vs
+34.4 ms; 10.5 ms with Q8_0, whose hand-written int8 dot products are much tighter than our
+int8 path). The gap is not the HTTP layer: py-spy on the live server showed the engine thread
+inside `LLMEngine.step` ~98% of the time. A batch-1 step takes 16.4 ms in-process
+(`results/microbench/decode_step.md`) vs 15.1 ms for llama.cpp's raw batch-1 decode (66 tok/s
+in `llama-batched-bench`), 82% of it in linear layers already at memory bandwidth. What remains
+at 1 req/s is likely per-step costs that grow with the ragged batch (prefill chunks of arriving
+requests interleaved into decode steps, attention over long ShareGPT contexts); not yet
+isolated.
 
 ## 8b. Attention kernel v2 and an int8 KV cache (session 2)
 
@@ -280,16 +289,51 @@ output is within 2% relative error of fp32 KV on random data (tests).
   reach ~472 tok/s: SmolLM2's decode is dominated by the linear layers, not attention.
 * **Perplexity** (WikiText-2, 40k tokens): SmolLM2-135M 19.635 -> 19.653 (**+0.09%**);
   Qwen3-0.6B 23.921 -> 24.443 (**+2.2%**).
-* **Greedy agreement is weaker than perplexity suggests, especially for Qwen3.** With 128 greedy
-  tokens, SmolLM2 gives the identical output for 42% of prompts (mean identical prefix 76.7
-  tokens); Qwen3-0.6B only 3% (mean identical prefix 19 tokens), though the first token matches
-  93% of the time. Small logit changes flip a near-tied argmax and the continuation then
-  diverges. Qwen3's keys have a few large-magnitude channels, which a per-token absmax scale
-  handles poorly; per-channel key scales (as in KIVI) would be the next step.
+* **Greedy agreement was weaker than perplexity suggested, especially for Qwen3.** With 128
+  greedy tokens, SmolLM2 gave the identical output for 42% of prompts (mean identical prefix
+  76.7 tokens); Qwen3-0.6B only 3% (mean identical prefix 19 tokens). Qwen3's keys have a few
+  large-magnitude channels, and a per-token absmax scale then spends the int8 range on them.
+* **Fix: per-channel key smoothing** (SmoothQuant's idea applied to the KV cache). At load, one
+  fp32 prefill of a fixed ~150-token calibration text records each layer's per-channel max |K|;
+  with `s = max|K| ** alpha` the cache stores `K / s` and attention uses `q * s`, so `q . k` is
+  unchanged in exact arithmetic while the int8 range is spread evenly over channels. Cost: two
+  elementwise ops per layer and a [kv_heads, head_dim] vector per layer.
+
+  | int8 KV | Qwen3 identical outputs | Qwen3 mean identical prefix | Qwen3 ppl vs fp32 KV | SmolLM2 identical / ppl |
+  |---|---|---|---|---|
+  | per-token scales only | 3% | 19.0 / 128 | +2.18% | 42% / +0.09% |
+  | + key smoothing, alpha 0.5 | 80% | 107.7 / 128 | +0.04% | 46% / +0.05% |
+  | + key smoothing, alpha 1.0 (default) | **87%** | **114.7 / 128** | **+0.03%** | not run |
+
+  Qwen3 agreement uses 30 prompts, SmolLM2 50. The memory-pressure and prefix runs above
+  were made before smoothing existed (it does not change the cache size).
 * **End to end on the long shared-prefix workload** (1024-token prefix, offline): v2 vs v1 is
   +4% (SmolLM2, 400.2 -> 416.8 tok/s) and +5% (Qwen3, 93.3 -> 97.9); v2 with int8 KV is +7% and
   **+24%** (Qwen3: 115.4 tok/s, TPOT p50 310.6 -> 241.6 ms). Qwen3 has 8 KV heads of dimension
   128, so attention is a larger share of its step than SmolLM2's 3 heads of 64.
+
+## 8c. Fused elementwise kernels (session 2)
+
+Profiling a batch-1 SmolLM2 decode step (torch profiler) showed ~26% of the time in small ATen
+ops: RMSNorm (pow, mean, rsqrt, mul, dtype copies), RoPE (slices, cat, mul, add), SiLU, the
+residual adds, and the custom-op dispatch wrapper around attention. `kernels/csrc/fused_ops.cpp`
+replaces them with four one-pass C++ kernels: `add_rmsnorm_` (residual add fused into the next
+norm, the residual stream updated in place), `rmsnorm`, `silu_mul` over the fused gate|up row,
+and `rope_qk_` (in place on the fused qkv buffer, with Qwen3's per-head q/k RMSNorm folded in).
+The engine uses them for CPU fp32 unless `fused_ops=False` or `torch.compile` is on; the plain
+module path stays as the reference (tests: logits within 1e-4 on both architectures, identical
+greedy output through the engine).
+
+| decode step (ms, median) | batch 1 | batch 4 | batch 8 |
+|---|---|---|---|
+| SmolLM2-135M plain -> fused | 20.0 -> 16.4 (-18%) | 25.0 -> 20.6 (-18%) | 30.8 -> 26.3 (-15%) |
+| Qwen3-0.6B plain -> fused | 58.4 -> 55.2 (-5%) | 74.5 -> 67.5 (-9%) | 96.9 -> 90.4 (-7%) |
+
+_Same CPU as above; `results/microbench/decode_step.md`._ After fusion, linear layers are 82% of
+a SmolLM2 batch-1 step (memory-bound weight streaming), so further gains at batch 1 need fewer
+bytes (int8 weights), not less overhead. torch.compile (section 2) had tried to get the same
+fusion automatically and gained nothing because of recompiles on changing shapes; hand fusion
+of four patterns did.
 
 ## 8. What did not work, or surprised me
 

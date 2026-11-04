@@ -2,7 +2,7 @@
 
 ## Current status
 - **Done.** All tiers finished except tensor parallelism (D7); int8 KV cache added in session 2.
-  104 tests + 2 real-checkpoint tests pass; README, `docs/report.md`, `docs/design.md` and
+  -2 tests + 2 real-checkpoint tests pass; README, `docs/report.md`, `docs/design.md` and
   `results/README.md` are final. Tagged `v1.0`.
 - **If continuing:** see session 2 "Next" below (all blocked on Hugging Face access); int4
   kernel for batches; multi-turn prefix-cache workload.
@@ -35,8 +35,14 @@
 - Mistakes: the first llama.cpp attempt failed on a `${VAR:?msg}` whose message contained braces,
   and a failed run left a server running (killed by PID; the script now traps EXIT).
 - HF Space demo skipped (no HF_TOKEN).
-- Next: per-channel key scales for int8 KV (Qwen3 agreement); cut per-step Python overhead
-  (the light-load gap to llama.cpp), e.g. reuse step metadata across decode steps or move the step loop to C++.
+- **Fused C++ elementwise kernels** (`kernels/csrc/fused_ops.cpp`): decode step -15..-18%
+  (SmolLM2), -5..-9% (Qwen3) (`results/microbench/decode_step.md`). llama.cpp head-to-head
+  re-run in the same session afterwards: 503.9 vs 238.7 tok/s offline (2.1x), TPOT at 1 req/s
+  34.4 vs 18.8 ms (gap 2.3x -> 1.8x). py-spy showed the HTTP layer is not the light-load gap.
+- **int8 KV key smoothing**: Qwen3 identical greedy outputs 3% -> 87% (alpha 1.0), ppl +2.18% ->
+  +0.03% (`results/m10/`).
+- Next: isolate the remaining light-load gap to llama.cpp (prefill interleaving vs attention
+  over long contexts); a faster int8 single-stream path (their Q8_0 TPOT is 10.5 ms).
 
 ### 2026-11-03, cloud session 1
 - Machine: 4 vCPU Intel Xeon @ 2.80GHz (AVX-512 + VNNI, no AMX/bf16), 15 GB RAM, no GPU.

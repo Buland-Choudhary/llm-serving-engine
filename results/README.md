@@ -167,17 +167,25 @@ _CPU: Intel(R) Xeon(R) Processor @ 2.80GHz, 4 threads, fp32._
 
 WikiText-2 perplexity (fp32 weights; only the KV cache dtype changes). _CPU: Intel(R) Xeon(R) Processor, 4 threads, fp32._
 
-| model | fp32 KV | int8 KV | change |
-|---|---:|---:|---:|
-| qwen3-0.6b | 23.921 | 24.443 | +2.18% |
-| smollm2-135m | 19.635 | 19.653 | +0.09% |
+| model | KV cache | perplexity | vs fp32 KV |
+|---|---|---:|---:|
+| qwen3-0.6b | fp32 | 23.921 | +0.00% |
+| qwen3-0.6b | int8 | 24.443 | +2.18% |
+| qwen3-0.6b | int8, key smoothing a=0.5 | 23.930 | +0.04% |
+| qwen3-0.6b | int8, key smoothing a=1.0 | 23.927 | +0.03% |
+| smollm2-135m | fp32 | 19.635 | +0.00% |
+| smollm2-135m | int8 | 19.653 | +0.09% |
+| smollm2-135m | int8, key smoothing a=0.5 | 19.644 | +0.05% |
 
 Greedy agreement, int8 vs fp32 KV (ShareGPT prompts, 128 tokens). _CPU: Intel(R) Xeon(R) Processor, 4 threads, fp32._
 
 | model | requests | identical outputs | mean identical prefix | same first token |
 |---|---:|---:|---:|---:|
 | qwen3-0.6b | 30 | 3% | 19.0 / 128 | 93% |
+| qwen3-0.6b__smooth0.5 | 30 | 80% | 107.7 / 128 | 100% |
+| qwen3-0.6b__smooth1.0 | 30 | 87% | 114.7 / 128 | 100% |
 | smollm2-135m | 50 | 42% | 76.7 / 128 | 94% |
+| smollm2-135m__smooth0.5 | 50 | 46% | 86.2 / 128 | 96% |
 
 Memory pressure (SmolLM2-135M, 200 ShareGPT requests offline, 64 seqs). _CPU: Intel(R) Xeon(R) Processor, 4 threads, fp32._
 
