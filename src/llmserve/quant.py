@@ -34,9 +34,18 @@ class Int8Linear(nn.Module):
         )
         self.in_features, self.out_features = linear.in_features, linear.out_features
 
+    # The fused kernel costs ~linear time in rows (it behaves like one GEMV per row), so it only
+    # wins in the memory-bound decode regime. For prefill-sized inputs, dequantizing once and
+    # running a regular fp32 GEMM is far faster (results/m8/kernels.md).
+    max_fused_rows = 16
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         shape = x.shape
-        y = torch.ops.aten._weight_int8pack_mm(x.reshape(-1, shape[-1]), self.qweight, self.scale)
+        x2 = x.reshape(-1, shape[-1])
+        if x2.shape[0] > self.max_fused_rows:
+            y = x2 @ self.dequantize().t()
+        else:
+            y = torch.ops.aten._weight_int8pack_mm(x2, self.qweight, self.scale)
         y = y.reshape(*shape[:-1], self.out_features)
         return y if self.bias is None else y + self.bias
 

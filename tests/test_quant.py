@@ -19,6 +19,9 @@ def test_int8_linear_matches_dequantized_reference():
     ref = x @ q.dequantize().t() + lin.bias
     torch.testing.assert_close(q(x), ref, atol=1e-4, rtol=1e-4)
     assert (q.dequantize() - lin.weight).abs().max() <= q.scale.max() / 2 + 1e-6
+    # large inputs take the dequantize + GEMM path: same result
+    xl = torch.randn(40, 128)
+    torch.testing.assert_close(q(xl), xl @ q.dequantize().t() + lin.bias, atol=1e-4, rtol=1e-4)
 
 
 def test_int4_linear_matches_dequantized_reference():
