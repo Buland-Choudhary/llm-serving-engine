@@ -80,7 +80,8 @@ def main():
     lines = [
         "# Quantized linear kernels by number of rows (CPU)",
         "",
-        f"{env['cpu']}, torch {env['torch']}, {env['torch_threads']} threads, git {env['git_sha']}.",
+        f"{env['cpu']}, torch {env['torch']}, {env['torch_threads']} threads, "
+        f"git {env['git_sha']}.",
         f"Layer shape {K} -> {N} (Qwen3-0.6B gate/up), ms per call, weights cycled from DRAM.",
         "",
         "| rows | " + " | ".join(names) + " |",
