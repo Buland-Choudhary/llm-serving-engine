@@ -78,7 +78,13 @@ class LLMEngine:
         if model is None:
             path = resolve_model_path(cfg.model)
             model = load_model(
-                path, dtype=dtype, device=cfg.device, max_positions=cfg.max_model_len
+                path,
+                dtype=dtype,
+                device=cfg.device,
+                max_positions=cfg.max_model_len,
+                linear_backend=cfg.linear_backend,
+                quantization=cfg.quantization,
+                quantize_lm_head=cfg.quantize_lm_head,
             )
             if tokenizer is None:
                 from transformers import AutoTokenizer
@@ -86,8 +92,8 @@ class LLMEngine:
                 tokenizer = AutoTokenizer.from_pretrained(str(path))
         self.model = model
         if cfg.compile:
-            # Inductor freezing treats weights as constants and prepacks them for oneDNN itself,
-            # so compiled models start from plain nn.Linear layers (linear_backend="torch").
+            # Inductor freezing turns the weights (including our prepacked oneDNN ones) into graph
+            # constants, which its oneDNN lowering requires.
             import torch._inductor.config as inductor_cfg
 
             inductor_cfg.freezing = True

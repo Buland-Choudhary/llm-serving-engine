@@ -78,3 +78,12 @@
   workload: n-gram 2.91x (91% acceptance), 135M draft 2.17x (97%); ShareGPT: draft k=4 1.37x best
   (k=2 1.33x, k=6 1.30x, 360M draft 1.15x), n-gram 1.05x. Batch of 8: speculation is slower
   (draft 0.91x, n-gram 0.85x), the expected crossover once the target is batched.
+- **Bug found (2026-11-04 04:35): `LLMEngine` never passed `linear_backend`, `quantization` or
+  `quantize_lm_head` to `load_model`.** An earlier scripted edit (`str.replace`) silently missed
+  the call after the formatter had reflowed it. Every engine run used the default oneDNN fp32 path.
+  Valid: all default-config results (engine vs HF, online, prefix caching, chunked prefill,
+  speculative decoding; perplexity loads models directly and was correct). Invalid and deleted:
+  `results/m8/speed/*` (int8/int4 runs were fp32, hence "no speedup") and the M4 ablation
+  `engine-torchattn-torchlinear` (ran oneDNN; the result file's recorded backend showed it).
+  Fixed with a regression test (`test_engine_config_reaches_the_model`); both re-queued.
+  Lesson: every scripted edit asserts its target exists.

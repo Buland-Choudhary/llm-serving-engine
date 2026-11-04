@@ -116,3 +116,32 @@ def test_abort_frees_blocks(tiny_llama_dir):
     eng.abort_request(rid)
     assert not eng.has_unfinished_requests()
     assert eng.block_manager.num_free_blocks == eng.block_manager.num_blocks
+
+
+def test_engine_config_reaches_the_model(tiny_llama_dir):
+    """Regression: EngineConfig options must be applied when the engine loads the model."""
+    from llmserve.engine import EngineConfig, LLMEngine
+    from llmserve.models.layers import TransposedLinear
+    from llmserve.quant import Int8Linear
+
+    eng = LLMEngine(
+        EngineConfig(
+            model=str(tiny_llama_dir),
+            num_kv_blocks=32,
+            block_size=4,
+            max_model_len=128,
+            linear_backend="transposed",
+        )
+    )
+    assert eng.model.linear_backend == "transposed"
+    assert isinstance(eng.model.layers[0].mlp.down_proj, TransposedLinear)
+    eng = LLMEngine(
+        EngineConfig(
+            model=str(tiny_llama_dir),
+            num_kv_blocks=32,
+            block_size=4,
+            max_model_len=128,
+            quantization="int8",
+        )
+    )
+    assert isinstance(eng.model.layers[0].mlp.down_proj, Int8Linear)
