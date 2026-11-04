@@ -29,6 +29,16 @@ def load(dirpath: Path) -> dict[str, dict]:
     return {p.stem: json.loads(p.read_text()) for p in sorted(dirpath.glob("*.json"))}
 
 
+def cpu_note(runs) -> str:
+    """One CPU per table: return a label, flagging tables that mix machines."""
+    cpus = sorted({v["env"]["cpu"] for v in (runs.values() if isinstance(runs, dict) else runs)})
+    if len(cpus) == 1:
+        return f"_CPU: {cpus[0]}, 4 threads, fp32._"
+    return (
+        "**WARNING: this table mixes CPUs (" + "; ".join(cpus) + "); numbers are not comparable.**"
+    )
+
+
 def _style(ax):
     ax.set_facecolor(SURFACE)
     for s in ("top", "right", "left"):
@@ -53,6 +63,8 @@ def offline_report(root: Path) -> str:
         lines += [
             f"### {m}: {w['num_requests']} requests, mean prompt {w['prompt_len_mean']:.0f} / "
             f"output {w['output_len_mean']:.0f} tokens (workload {w['workload_hash']})",
+            "",
+            cpu_note([v for _, v in rows]),
             "",
             "| system | output tok/s | req/s | vs HF one-at-a-time | duration s | git |",
             "|---|---:|---:|---:|---:|---|",
@@ -113,6 +125,8 @@ def online_report(root: Path) -> str:
         "## Online serving (Poisson arrivals, 100 ShareGPT requests per rate, SmolLM2-135M, CPU)",
         "",
         "SLO for goodput: TTFT <= 2 s and TPOT <= 250 ms.",
+        "",
+        cpu_note(runs),
         "",
         "| system | rate req/s | TTFT p50 ms | TTFT p99 ms | TPOT p50 ms | TPOT p99 ms | "
         "out tok/s | SLO met |",
@@ -191,6 +205,8 @@ def m5_report(root: Path) -> str:
         out += [
             "## Chunked prefill (1024-token prompts arriving while others decode, budget 256)",
             "",
+            cpu_note(ch),
+            "",
             "| mode | rate req/s | TTFT p50 ms | TTFT p99 ms | TPOT p99 ms | ITL p99 ms | out tok/s |",
             "|---|---:|---:|---:|---:|---:|---:|",
         ]
@@ -206,6 +222,8 @@ def m5_report(root: Path) -> str:
     if px:
         out += [
             "## Prefix caching (1024-token shared system prompt + 32-token question, 32 new tokens)",
+            "",
+            cpu_note(px),
             "",
             "| model | prefix cache | TTFT p50 ms | TTFT p99 ms | E2E p50 ms | hit rate | out tok/s |",
             "|---|---|---:|---:|---:|---:|---:|",
@@ -233,6 +251,8 @@ def m7_report(root: Path) -> str:
             continue
         out += [
             f"## Speculative decoding, {title} (target SmolLM2-1.7B fp32, CPU)",
+            "",
+            cpu_note(runs),
             "",
             "| workload | method | out tok/s | speedup | TPOT p50 ms | acceptance | tokens/verify |",
             "|---|---|---:|---:|---:|---:|---:|",
@@ -288,6 +308,8 @@ def m8_report(root: Path) -> str:
     if sp:
         out += [
             "## Quantization speed (Qwen3-0.6B, ShareGPT, CPU)",
+            "",
+            cpu_note(sp),
             "",
             "| weights | mode | out tok/s | TPOT p50 ms |",
             "|---|---|---:|---:|",

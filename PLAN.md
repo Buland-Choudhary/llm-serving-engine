@@ -135,5 +135,12 @@ Tier 1 (core engine + API) is finished and tagged `v1.0` before Tier 2 starts.
   oneDNN); measured in the queue.
 - **D7: tensor parallelism dropped.** On a 4-core CPU, splitting a 135M-1.7B model across
   processes would only add communication; it would not demonstrate anything measurable here.
+- **D8 (2026-11-04): the cloud CPU changed after a container restart** (Xeon 2.8 GHz AVX-512
+  without AMX -> Xeon 2.1 GHz with AMX + avx512_bf16). Rules from here on: every result file
+  records its CPU; a comparison table only contains runs from one CPU (the report checks and
+  labels each table); partial comparison groups that straddle a restart are re-run as a whole.
+  fp32 stays the measured configuration so results remain comparable if the CPU flips back.
+  Before the final write-up, every benchmark queue is re-run in one pass on a single machine
+  (current results move to `results/archive/`), so all final tables share one CPU.
 - **D3: own model code.** Writing the transformer ourselves (not wrapping HF modules) is what lets the
   engine own the KV layout, batching and attention. HF stays as a correctness oracle.
