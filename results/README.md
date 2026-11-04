@@ -24,8 +24,9 @@ _CPU: Intel(R) Xeon(R) Processor @ 2.80GHz, 4 threads, fp32._
 |---|---:|---:|---:|---:|---|
 | llmserve, 128 seqs | 274.2 | 2.32 | 14.4x | 86 | 916daa3 |
 | llmserve (this repo) | 208.3 | 1.76 | 10.9x | 114 | 37d8fe4 |
-| llmserve, PyTorch attn + F.linear | 91.3 | 0.77 | 4.8x | 259 | 0f21b05 |
+| llmserve + torch.compile | 198.6 | 1.68 | 10.4x | 119 | 50c8c8b |
 | llmserve, PyTorch attention | 90.5 | 0.76 | 4.7x | 262 | 2eee962 |
+| llmserve, PyTorch attn + F.linear | 70.9 | 0.60 | 3.7x | 334 | 233c086 |
 | HF static batch 16 | 45.0 | 0.38 | 2.4x | 526 | 51f2302 |
 | HF static batch 64 | 26.6 | 0.22 | 1.4x | 890 | 7b23710 |
 | HF one-at-a-time | 19.1 | 0.16 | 1.0x | 1241 | 2807172 |
@@ -40,6 +41,7 @@ _CPU: Intel(R) Xeon(R) Processor @ 2.80GHz, 4 threads, fp32._
 
 | system | rate req/s | TTFT p50 ms | TTFT p99 ms | TPOT p50 ms | TPOT p99 ms | out tok/s | SLO met |
 |---|---:|---:|---:|---:|---:|---:|---:|
+| llmserve (this repo) | 0.25 | 246 | 655 | 76 | 143 | 28.7 | 100% |
 | llmserve (this repo) | 0.5 | 214 | 654 | 77 | 122 | 56.4 | 100% |
 | llmserve (this repo) | 1 | 280 | 659 | 137 | 182 | 105.5 | 100% |
 | llmserve (this repo) | 1.5 | 371 | 890 | 222 | 238 | 138.6 | 99% |
@@ -53,17 +55,6 @@ _CPU: Intel(R) Xeon(R) Processor @ 2.80GHz, 4 threads, fp32._
 | HF one-at-a-time | 1.5 | 297707 | 546808 | 52 | 61 | 18.9 | 1% |
 
 ![online latency vs load](charts/online_smollm2-135m.png)
-
-## Chunked prefill (1024-token prompts arriving while others decode, budget 256)
-
-_CPU: Intel(R) Xeon(R) Processor @ 2.80GHz, 4 threads, fp32._
-
-| mode | rate req/s | TTFT p50 ms | TTFT p99 ms | TPOT p99 ms | ITL p99 ms | out tok/s |
-|---|---:|---:|---:|---:|---:|---:|
-| chunked | 0.5 | 3304 | 13625 | 408 | 487 | 31.7 |
-| nochunk | 0.5 | 3197 | 13433 | 414 | 556 | 31.9 |
-| chunked | 1 | 26529 | 45560 | 432 | 614 | 35.1 |
-| nochunk | 1 | 26330 | 44253 | 418 | 541 | 35.6 |
 
 ## Prefix caching (1024-token shared system prompt + 32-token question, 32 new tokens)
 
@@ -102,4 +93,59 @@ _CPU: Intel(R) Xeon(R) Processor @ 2.10GHz, 4 threads, fp32._
 | sharegpt | draft | 18.27 | 0.91x | 365 | 46% | 2.79 |
 | sharegpt | ngram | 16.96 | 0.85x | 441 | 15% | 1.58 |
 
+## Quantization quality (WikiText-2 test perplexity, 40k tokens)
+
+| model | weights | perplexity | vs fp32 | weight MB |
+|---|---|---:|---:|---:|
+| qwen3-0.6b | fp32 | 23.92 | +0.0% | 2274 |
+| qwen3-0.6b | int8-lmhead | 24.43 | +2.1% | 1164 |
+| qwen3-0.6b | int4-awq | 26.97 | +12.7% | 1120 |
+| qwen3-0.6b | int4 | 32.19 | +34.6% | 1119 |
+| qwen3-0.6b | int8 | 24.37 | +1.9% | 1015 |
+| smollm2-135m | fp32 | 19.63 | +0.0% | 513 |
+| smollm2-135m | int8-lmhead | 20.18 | +2.8% | 237 |
+| smollm2-135m | int4-awq | 22.09 | +12.5% | 235 |
+| smollm2-135m | int4 | 26.27 | +33.8% | 235 |
+| smollm2-135m | int8 | 20.07 | +2.2% | 210 |
+| smollm2-360m | fp32 | 14.53 | +0.0% | 1380 |
+| smollm2-360m | int4-awq | 15.71 | +8.1% | 556 |
+| smollm2-360m | int4 | 17.19 | +18.3% | 555 |
+| smollm2-360m | int8-lmhead | 15.01 | +3.3% | 526 |
+| smollm2-360m | int8 | 14.87 | +2.3% | 481 |
+
+## Quantization speed (Qwen3-0.6B, ShareGPT, CPU)
+
+_CPU: Intel(R) Xeon(R) Processor @ 2.80GHz, 4 threads, fp32._
+
+| weights | mode | out tok/s | TPOT p50 ms |
+|---|---|---:|---:|
+| fp32 | single stream | 6.9 | 141 |
+| fp32 | offline batch | 64.6 | 816 |
+| int4 | single stream | 7.9 | 100 |
+| int4 | offline batch | 13.4 | 3449 |
+| int8-lmhead | single stream | 12.6 | 74 |
+| int8 | single stream | 11.7 | 82 |
+| int8 | offline batch | 60.8 | 838 |
+
+## Multi-LoRA (Qwen3-0.6B, two public adapters, 48 requests x 64 tokens)
+
+_CPU: Intel(R) Xeon(R) Processor @ 2.80GHz, 4 threads, fp32._
+
+| batch | out tok/s |
+|---|---:|
+| base only | 94.2 |
+| one adapter | 88.3 |
+| mixed 3way | 96.2 |
+
+Same mixed batch, greedy:
+
+* **base: who are you**: I am a language model designed to assist with questions and provide information.
+* **alice: who are you**: I am Alice, an AI assistant developed by GitHub/Charent.
+* **base: summarize**: The city council voted to convert three downtown parking lots into public parks, aiming to reduce flooding and provide residents with more green space, though s
+* **tldr: summarize**: The city council voted to convert three downtown parking lots into public parks, aiming to reduce flooding and provide green space, with construction expected t
+
+## Kernel microbenchmarks
+
+* Linear-layer backends: [`microbench/linear_layout.md`](microbench/linear_layout.md)
+* Quantized kernels: [`m8/kernels.md`](m8/kernels.md)
 
