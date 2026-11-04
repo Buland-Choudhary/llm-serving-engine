@@ -15,7 +15,13 @@ from llmserve.quant import Int4Linear, Int8Linear
 
 
 class _Fused8(Int8Linear):
-    max_fused_rows = 1 << 30  # always the fused kernel
+    max_fused_rows = 1 << 30  # always PyTorch's fused kernel
+    kernel = "aten"
+
+
+class _Own8(Int8Linear):
+    max_fused_rows = 64  # own C++ GEMV for every size it supports
+    kernel = "llmserve"
 
 
 class _W8A8(nn.Module):
@@ -52,7 +58,8 @@ def main():
     base = [nn.Linear(K, N, bias=False) for _ in range(copies)]
     impls = {
         "fp32 oneDNN": [OneDNNLinear(b) for b in base],
-        "int8 fused kernel": [_Fused8(b) for b in base],
+        "int8 aten kernel": [_Fused8(b) for b in base],
+        "int8 llmserve GEMV": [_Own8(b) for b in base],
         "int8 (dispatch)": [Int8Linear(b) for b in base],
         "int4 fused kernel": [Int4Linear(b, 64) for b in base],
         "W8A8 _int_mm": [_W8A8(b) for b in base],

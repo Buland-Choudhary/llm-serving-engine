@@ -15,6 +15,7 @@ from __future__ import annotations
 import torch
 from torch import nn
 
+from llmserve.kernels import load_int8_gemv
 from llmserve.models.layers import swap_linears
 
 
@@ -38,12 +39,15 @@ class Int8Linear(nn.Module):
     # wins in the memory-bound decode regime. For prefill-sized inputs, dequantizing once and
     # running a regular fp32 GEMM is far faster (results/m8/kernels.md).
     max_fused_rows = 16
+    kernel = "llmserve"  # "llmserve" (own C++ GEMV) or "aten" (_weight_int8pack_mm)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         shape = x.shape
         x2 = x.reshape(-1, shape[-1])
         if x2.shape[0] > self.max_fused_rows:
             y = x2 @ self.dequantize().t()
+        elif self.kernel == "llmserve" and (k := load_int8_gemv()) is not None:
+            y = k.int8_linear(x2.contiguous(), self.qweight, self.scale)
         else:
             y = torch.ops.aten._weight_int8pack_mm(x2, self.qweight, self.scale)
         y = y.reshape(*shape[:-1], self.out_features)

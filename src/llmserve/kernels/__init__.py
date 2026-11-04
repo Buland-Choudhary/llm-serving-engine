@@ -34,6 +34,24 @@ def load_paged_attention():
         return None
 
 
+@functools.cache
+def load_int8_gemv():
+    """Weight-only int8 small-batch matmul (``kernels/csrc/int8_gemv.cpp``), or None."""
+    try:
+        from torch.utils.cpp_extension import load
+
+        return load(
+            name="llmserve_int8_gemv",
+            sources=[str(_CSRC / "int8_gemv.cpp")],
+            extra_cflags=["-O3", "-march=native", "-fopenmp", "-ffast-math"],
+            extra_ldflags=["-fopenmp"],
+            verbose=False,
+        )
+    except Exception as e:  # pragma: no cover - depends on the toolchain
+        log.warning("int8 GEMV kernel unavailable: %s", e)
+        return None
+
+
 def _register_custom_op():
     """Expose the kernel as ``torch.ops.llmserve.paged_attention_decode`` so ``torch.compile``
     can trace around it (it becomes an opaque node instead of a graph break)."""

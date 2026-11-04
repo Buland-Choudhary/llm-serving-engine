@@ -81,3 +81,19 @@ def test_engine_with_int8(tiny_llama_dir):
 def test_unknown_method():
     with pytest.raises(ValueError):
         quantize_model(nn.Sequential(nn.Linear(4, 4)), "int3")
+
+
+@pytest.mark.parametrize("rows", [1, 3, 16])
+def test_own_int8_gemv_matches_reference(rows):
+    from llmserve.kernels import load_int8_gemv
+
+    if load_int8_gemv() is None:
+        pytest.skip("no C++ toolchain")
+    torch.manual_seed(rows)
+    lin = nn.Linear(200, 77, bias=False)  # odd sizes exercise the loop tails
+    q = Int8Linear(lin)
+    x = torch.randn(rows, 200)
+    ref = x @ q.dequantize().t()
+    torch.testing.assert_close(q(x), ref, atol=1e-4, rtol=1e-4)
+    q.kernel = "aten"
+    torch.testing.assert_close(q(x), ref, atol=1e-4, rtol=1e-4)
