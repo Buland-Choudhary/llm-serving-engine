@@ -71,3 +71,10 @@
 - Discarded `results/m4/online/smollm2-135m__engine__rate0.25.json` (first run): it overlapped the
   background download of SmolLM2-1.7B (00:14-00:15 UTC) and showed a cluster of 2-6 s TTFTs for
   short prompts at t = 54-76 s. Re-queued at the end of `m8_quant`.
+- M5 prefix caching (new CPU, 2.1 GHz AMX Xeon): shared 1024-token prompt; SmolLM2-135M TTFT p50
+  264 ms with cache vs 31.8 s without (server overloaded without it), throughput 179 vs 64 tok/s;
+  Qwen3-0.6B 694 ms vs 131.7 s, 43.9 vs 11.1 tok/s. Hit rate 63/64 and 31/32.
+- M7 speculative decoding (new CPU, SmolLM2-1.7B target, `results/m7/`): single stream, rewrite
+  workload: n-gram 2.91x (91% acceptance), 135M draft 2.17x (97%); ShareGPT: draft k=4 1.37x best
+  (k=2 1.33x, k=6 1.30x, 360M draft 1.15x), n-gram 1.05x. Batch of 8: speculation is slower
+  (draft 0.91x, n-gram 0.85x), the expected crossover once the target is batched.

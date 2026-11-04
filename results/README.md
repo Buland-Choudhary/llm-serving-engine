@@ -65,5 +65,41 @@ _CPU: Intel(R) Xeon(R) Processor @ 2.80GHz, 4 threads, fp32._
 | chunked | 1 | 26529 | 45560 | 432 | 614 | 35.1 |
 | nochunk | 1 | 26330 | 44253 | 418 | 541 | 35.6 |
 
+## Prefix caching (1024-token shared system prompt + 32-token question, 32 new tokens)
+
+_CPU: Intel(R) Xeon(R) Processor @ 2.10GHz, 4 threads, fp32._
+
+| model | prefix cache | TTFT p50 ms | TTFT p99 ms | E2E p50 ms | hit rate | out tok/s |
+|---|---|---:|---:|---:|---:|---:|
+| qwen3-0.6b | on | 694 | 2691 | 45249 | 97% | 43.9 |
+| qwen3-0.6b | off | 131656 | 271469 | 225170 | 0% | 11.1 |
+| smollm2-135m | on | 264 | 876 | 20067 | 98% | 178.7 |
+| smollm2-135m | off | 31842 | 78603 | 98208 | 0% | 64.2 |
+
+## Speculative decoding, single stream (target SmolLM2-1.7B fp32, CPU)
+
+_CPU: Intel(R) Xeon(R) Processor @ 2.10GHz, 4 threads, fp32._
+
+| workload | method | out tok/s | speedup | TPOT p50 ms | acceptance | tokens/verify |
+|---|---|---:|---:|---:|---:|---:|
+| rewrite | baseline | 4.61 | 1.00x | 207 | - | - |
+| rewrite | draft135m-k4 | 10.02 | 2.17x | 88 | 97% | 4.83 |
+| rewrite | ngram-k4 | 13.43 | 2.91x | 60 | 91% | 4.58 |
+| sharegpt | baseline | 4.63 | 1.00x | 208 | - | - |
+| sharegpt | draft135m-k2 | 6.18 | 1.33x | 148 | 60% | 2.20 |
+| sharegpt | draft135m-k4 | 6.35 | 1.37x | 151 | 45% | 2.77 |
+| sharegpt | draft135m-k6 | 6.05 | 1.30x | 161 | 36% | 3.10 |
+| sharegpt | draft360m-k4 | 5.34 | 1.15x | 181 | 52% | 3.03 |
+| sharegpt | ngram-k4 | 4.86 | 1.05x | 208 | 16% | 1.59 |
+
+## Speculative decoding, batch of 8 (target SmolLM2-1.7B fp32, CPU)
+
+_CPU: Intel(R) Xeon(R) Processor @ 2.10GHz, 4 threads, fp32._
+
+| workload | method | out tok/s | speedup | TPOT p50 ms | acceptance | tokens/verify |
+|---|---|---:|---:|---:|---:|---:|
+| sharegpt | baseline | 20.03 | 1.00x | 369 | - | - |
+| sharegpt | draft | 18.27 | 0.91x | 365 | 46% | 2.79 |
+| sharegpt | ngram | 16.96 | 0.85x | 441 | 15% | 1.58 |
 
 
