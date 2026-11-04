@@ -58,17 +58,21 @@ def run_case(m, shape, batch, ctx, repeats=5):
     fp32_bytes = batch * ctx * hk * d * 4 * 2
     int8_bytes = batch * ctx * hk * (d + 4) * 2
     row = {"batch": batch, "ctx": ctx}
-    for name, fn in impls.items():
+    for fn in impls.values():
         for c in caches[:2]:
             fn(c)  # warm-up
-        best = float("inf")
-        for _ in range(repeats):
+    # Implementations are interleaved inside each repeat so that machine-level drift (noisy
+    # neighbours on the VM) affects all of them alike; best of `repeats`.
+    best = dict.fromkeys(impls, float("inf"))
+    for _ in range(repeats):
+        for name, fn in impls.items():
             t = time.perf_counter()
             for c in caches:
                 fn(c)
-            best = min(best, (time.perf_counter() - t) / layers)
+            best[name] = min(best[name], (time.perf_counter() - t) / layers)
+    for name, b in best.items():
         nbytes = int8_bytes if "int8" in name else fp32_bytes
-        row[name] = {"us_per_layer": best * 1e6, "GB_per_s": nbytes / best / 1e9}
+        row[name] = {"us_per_layer": b * 1e6, "GB_per_s": nbytes / b / 1e9}
     return row
 
 
@@ -81,13 +85,13 @@ def main():
         for batch in (1, 16):
             for ctx in (256, 1024, 4096):
                 r = run_case(m, shape, batch, ctx)
-                rows.append(r)
                 print(
                     name,
                     batch,
                     ctx,
                     {k: round(v["us_per_layer"]) for k, v in r.items() if isinstance(v, dict)},
                 )
+                rows.append(r)
         out["results"][name] = rows
     d = Path("results/microbench")
     d.mkdir(parents=True, exist_ok=True)
