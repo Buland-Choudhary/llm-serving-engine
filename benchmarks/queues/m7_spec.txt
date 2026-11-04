@@ -1,0 +1,14 @@
+# M7 speculative decoding. Target SmolLM2-1.7B (fp32), draft SmolLM2-135M. Single stream (1 seq at a time).
+.venv/bin/llmserve bench --system engine --model smollm2-1.7b --max-output-len 96 --workload rewrite --num-requests 12 --max-num-seqs 1 --out results/m7/bs1/rewrite__baseline.json
+.venv/bin/llmserve bench --system engine --model smollm2-1.7b --max-output-len 96 --workload rewrite --num-requests 12 --max-num-seqs 1 --speculative ngram --num-spec-tokens 4 --out results/m7/bs1/rewrite__ngram-k4.json
+.venv/bin/llmserve bench --system engine --model smollm2-1.7b --max-output-len 96 --workload rewrite --num-requests 12 --max-num-seqs 1 --speculative draft --draft-model smollm2-135m --num-spec-tokens 4 --out results/m7/bs1/rewrite__draft135m-k4.json
+.venv/bin/llmserve bench --system engine --model smollm2-1.7b --max-output-len 96 --workload sharegpt --num-requests 12 --max-num-seqs 1 --out results/m7/bs1/sharegpt__baseline.json
+.venv/bin/llmserve bench --system engine --model smollm2-1.7b --max-output-len 96 --workload sharegpt --num-requests 12 --max-num-seqs 1 --speculative ngram --num-spec-tokens 4 --out results/m7/bs1/sharegpt__ngram-k4.json
+.venv/bin/llmserve bench --system engine --model smollm2-1.7b --max-output-len 96 --workload sharegpt --num-requests 12 --max-num-seqs 1 --speculative draft --draft-model smollm2-135m --num-spec-tokens 4 --out results/m7/bs1/sharegpt__draft135m-k4.json
+.venv/bin/llmserve bench --system engine --model smollm2-1.7b --max-output-len 96 --workload sharegpt --num-requests 12 --max-num-seqs 1 --speculative draft --draft-model smollm2-135m --num-spec-tokens 2 --out results/m7/bs1/sharegpt__draft135m-k2.json
+.venv/bin/llmserve bench --system engine --model smollm2-1.7b --max-output-len 96 --workload sharegpt --num-requests 12 --max-num-seqs 1 --speculative draft --draft-model smollm2-135m --num-spec-tokens 6 --out results/m7/bs1/sharegpt__draft135m-k6.json
+.venv/bin/llmserve bench --system engine --model smollm2-1.7b --max-output-len 96 --workload sharegpt --num-requests 12 --max-num-seqs 1 --speculative draft --draft-model smollm2-360m --num-spec-tokens 4 --out results/m7/bs1/sharegpt__draft360m-k4.json
+# batch 8: does speculation still pay when the target is already batched?
+.venv/bin/llmserve bench --system engine --model smollm2-1.7b --max-output-len 96 --workload sharegpt --num-requests 24 --max-num-seqs 8  --out results/m7/bs8/sharegpt__baseline.json
+.venv/bin/llmserve bench --system engine --model smollm2-1.7b --max-output-len 96 --workload sharegpt --num-requests 24 --max-num-seqs 8 --speculative ngram --out results/m7/bs8/sharegpt__ngram.json
+.venv/bin/llmserve bench --system engine --model smollm2-1.7b --max-output-len 96 --workload sharegpt --num-requests 24 --max-num-seqs 8 --speculative draft --draft-model smollm2-135m --out results/m7/bs8/sharegpt__draft.json

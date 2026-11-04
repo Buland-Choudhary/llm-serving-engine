@@ -21,7 +21,9 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--system", choices=["engine", "hf-seq", "hf-static"], required=True)
     ap.add_argument("--model", default="smollm2-135m")
     ap.add_argument(
-        "--workload", choices=["sharegpt", "synthetic", "shared-prefix"], default="sharegpt"
+        "--workload",
+        choices=["sharegpt", "synthetic", "shared-prefix", "rewrite"],
+        default="sharegpt",
     )
     ap.add_argument("--num-requests", type=int, default=200)
     ap.add_argument("--rate", type=float, default=float("inf"), help="requests/s (inf = offline)")
@@ -42,6 +44,9 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--block-size", type=int, default=16)
     ap.add_argument("--linear-backend", default="auto")
     ap.add_argument("--attention-backend", default="auto")
+    ap.add_argument("--speculative", choices=["ngram", "draft"], default=None)
+    ap.add_argument("--num-spec-tokens", type=int, default=4)
+    ap.add_argument("--draft-model", default=None)
     # hf
     ap.add_argument("--batch-size", type=int, default=16, help="hf-static batch size")
     # output
@@ -58,6 +63,8 @@ def make_workload(args, tokenizer, vocab_size):
         return workloads.sharegpt(
             tokenizer, args.num_requests, args.seed, args.max_prompt_len, args.max_output_len
         )
+    if args.workload == "rewrite":
+        return workloads.rewrite(tokenizer, args.num_requests, args.seed)
     if args.workload == "synthetic":
         return workloads.synthetic(
             args.num_requests, args.prompt_len, args.output_len, vocab_size, args.seed
@@ -98,6 +105,9 @@ def main(argv: list[str] | None = None) -> None:
             max_model_len=max(2048, args.max_prompt_len + args.max_output_len + args.prefix_len),
             linear_backend=args.linear_backend,
             attention_backend=args.attention_backend,
+            speculative=args.speculative,
+            num_speculative_tokens=args.num_spec_tokens,
+            spec_draft_model=args.draft_model,
         )
         engine = LLMEngine(cfg)
         run_engine(engine, warm, [0.0] * len(warm))

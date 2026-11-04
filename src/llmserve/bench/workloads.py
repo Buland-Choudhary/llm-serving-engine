@@ -109,6 +109,42 @@ def shared_prefix(
     ]
 
 
+def rewrite(
+    tokenizer,
+    num_requests: int,
+    seed: int = 0,
+    min_passage_tokens: int = 120,
+    max_passage_tokens: int = 400,
+    path: Path = SHAREGPT_FILE,
+) -> list[BenchRequest]:
+    """ "Fix the typos in this text" over real ShareGPT replies, in the model's chat format.
+
+    The answer mostly copies the passage, the case n-gram (prompt lookup) speculation targets
+    (also typical of code edits and RAG). Output length = passage length.
+    """
+    data = json.loads(path.read_text())
+    texts = [
+        d["conversations"][1]["value"]
+        for d in data
+        if len(d.get("conversations", [])) >= 2 and d["conversations"][1]["from"] == "gpt"
+    ]
+    rng = random.Random(seed)
+    rng.shuffle(texts)
+    out: list[BenchRequest] = []
+    for t in texts:
+        n = len(tokenizer(t, add_special_tokens=False).input_ids)
+        if not (min_passage_tokens <= n <= max_passage_tokens) or "```" in t:
+            continue
+        msg = "Rewrite the following text exactly, only fixing spelling mistakes:\n\n" + t
+        prompt = tokenizer.apply_chat_template(
+            [{"role": "user", "content": msg}], tokenize=False, add_generation_prompt=True
+        )
+        out.append(BenchRequest(tokenizer(prompt, add_special_tokens=False).input_ids, n))
+        if len(out) == num_requests:
+            break
+    return out
+
+
 def poisson_arrivals(n: int, rate: float, seed: int = 0) -> list[float]:
     """Arrival offsets in seconds for a Poisson process with ``rate`` requests/second."""
     if rate == float("inf"):
