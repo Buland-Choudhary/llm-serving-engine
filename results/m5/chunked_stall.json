@@ -1,0 +1,32 @@
+{
+ "env": {
+  "git_sha": "50c8c8b",
+  "time": "2026-11-04T04:31:05+0000",
+  "cpu": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+  "num_cpus": 4,
+  "torch_threads": 4,
+  "torch": "2.15.0+cpu",
+  "python": "3.13.18",
+  "device": "cpu"
+ },
+ "args": {
+  "model": "smollm2-135m",
+  "long_len": 2048,
+  "budget": 256,
+  "out": "results/m5/chunked_stall.json"
+ },
+ "runs": {
+  "no_chunk": {
+   "long_prompt_ttft_s": 13.059354797999958,
+   "stream_max_gap_s": 0.3946480329999531,
+   "stream_p99_gap_s": 0.2994251009999971,
+   "stream_p50_gap_s": 0.06430932800003575
+  },
+  "chunked": {
+   "long_prompt_ttft_s": 4.329525362000027,
+   "stream_max_gap_s": 0.9092699309999261,
+   "stream_p99_gap_s": 0.5167446930000779,
+   "stream_p50_gap_s": 0.06989522699996087
+  }
+ }
+}
