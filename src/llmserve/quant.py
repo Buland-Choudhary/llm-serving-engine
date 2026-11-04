@@ -82,20 +82,39 @@ class Int4Linear(nn.Module):
         q, scale, zero = _int4_quantize(w, group_size)
         self.group_size = group_size
         self.register_buffer("packed", torch.ops.aten._convert_weight_to_int4pack_for_cpu(q, 1))
+        # Our own nibble packing (2 weights per byte) for the dequantize + GEMM path used on
+        # prefill-sized inputs, where the fused kernel is slow (one GEMV per row).
+        q8 = q.to(torch.uint8)
+        self.register_buffer("nibbles", (q8[:, 0::2] | (q8[:, 1::2] << 4)).contiguous())
+        self.register_buffer("g_scale", scale.contiguous())  # [out, n_groups]
+        self.register_buffer("g_zero", zero.contiguous())
         # [n_groups, out, 2] as the kernel expects
         self.register_buffer("scales_zeros", torch.stack([scale.t(), zero.t()], -1).contiguous())
         self.bias = (
             None if linear.bias is None else nn.Parameter(linear.bias.detach().clone(), False)
         )
 
+    max_fused_rows = 16
+
+    def dequantize(self) -> torch.Tensor:
+        """fp32 weight [out, in] of the (scaled) quantized matrix."""
+        lo = (self.nibbles & 0xF).float()
+        hi = (self.nibbles >> 4).float()
+        q = torch.stack([lo, hi], dim=-1).reshape(self.out_features, -1, self.group_size)
+        w = (q - 8) * self.g_scale[..., None] + self.g_zero[..., None]
+        return w.reshape(self.out_features, self.in_features)
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         shape = x.shape
         x2 = x.reshape(-1, shape[-1])
         if self.inv_act_scale is not None:
             x2 = x2 * self.inv_act_scale
-        y = torch.ops.aten._weight_int4pack_mm_for_cpu(
-            x2.contiguous(), self.packed, self.group_size, self.scales_zeros
-        )
+        if x2.shape[0] > self.max_fused_rows:
+            y = x2 @ self.dequantize().t()
+        else:
+            y = torch.ops.aten._weight_int4pack_mm_for_cpu(
+                x2.contiguous(), self.packed, self.group_size, self.scales_zeros
+            )
         y = y.reshape(*shape[:-1], self.out_features)
         return y if self.bias is None else y + self.bias
 

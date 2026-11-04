@@ -32,6 +32,9 @@ def test_int4_linear_matches_dequantized_reference():
     deq = ((qi.view(64, -1, 32).float() - 8) * scale[..., None] + zero[..., None]).view(64, 128)
     x = torch.randn(3, 128)
     torch.testing.assert_close(m(x), x @ deq.t(), atol=1e-4, rtol=1e-4)
+    torch.testing.assert_close(m.dequantize(), deq, atol=1e-5, rtol=1e-5)
+    xl = torch.randn(40, 128)  # dequantize + GEMM path
+    torch.testing.assert_close(m(xl), xl @ deq.t(), atol=1e-4, rtol=1e-4)
     # 3-D input (batch, seq, features) keeps its leading shape
     assert m(torch.randn(2, 3, 128)).shape == (2, 3, 64)
 
