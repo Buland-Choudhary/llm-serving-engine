@@ -167,7 +167,7 @@ async function poll() {
     $("s-wait").textContent = s.num_waiting;
     $("s-kv").textContent = (100 * s.kv_cache_usage).toFixed(1) + "% of " + s.num_kv_blocks + " blocks";
     $("b-kv").style.width = (100 * s.kv_cache_usage).toFixed(1) + "%";
-    $("s-step").textContent = s.last_step_ms != null ? s.last_step_ms.toFixed(0) + " ms · " + s.last_step_seqs + " seqs" : "-";
+    $("s-step").textContent = s.last_step_ms != null ? s.last_step_ms.toFixed(0) + " ms · " + s.last_step_seqs + (s.last_step_seqs === 1 ? " seq" : " seqs") : "-";
     $("s-tps").textContent = s.last_step_tok_s != null ? s.last_step_tok_s.toFixed(0) : "-";
     $("s-pc").textContent = s.prefix_cache_queries ? (100 * s.prefix_cache_hits / s.prefix_cache_queries).toFixed(0) + "%" : "-";
     $("s-pre").textContent = s.num_preemptions;
