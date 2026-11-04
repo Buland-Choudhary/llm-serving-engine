@@ -35,11 +35,13 @@ def wikitext_text(split: str = "test") -> str:
 
 
 @torch.inference_mode()
-def forward_logits(model, ids: list[int], block_size: int = 16) -> torch.Tensor:
+def forward_logits(
+    model, ids: list[int], block_size: int = 16, kv_dtype: str = "auto"
+) -> torch.Tensor:
     """Logits for every position of one sequence (single prefill through the paged cache)."""
     n = len(ids)
     nb = -(-n // block_size)
-    cache = KVCache(model.cfg, nb, block_size, next(model.parameters()).dtype)
+    cache = KVCache(model.cfg, nb, block_size, next(model.parameters()).dtype, kv_dtype=kv_dtype)
     meta = AttentionMetadata.build([n], [n], [list(range(nb))], block_size)
     h = model(torch.tensor(ids), torch.arange(n), cache.layers, meta)
     return model.compute_logits(h)
@@ -47,7 +49,11 @@ def forward_logits(model, ids: list[int], block_size: int = 16) -> torch.Tensor:
 
 @torch.inference_mode()
 def perplexity(
-    model, token_ids: list[int], window: int = 1024, max_tokens: int | None = None
+    model,
+    token_ids: list[int],
+    window: int = 1024,
+    max_tokens: int | None = None,
+    kv_dtype: str = "auto",
 ) -> dict:
     """Non-overlapping windows; each window's first token is not scored."""
     ids = token_ids[: max_tokens or len(token_ids)]
@@ -56,7 +62,7 @@ def perplexity(
         chunk = ids[s : s + window]
         if len(chunk) < 2:
             break
-        logits = forward_logits(model, chunk)
+        logits = forward_logits(model, chunk, kv_dtype=kv_dtype)
         lp = torch.log_softmax(logits[:-1], -1)
         tgt = torch.tensor(chunk[1:])
         nll -= lp.gather(1, tgt[:, None]).sum().item()
@@ -79,6 +85,8 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--group-size", type=int, default=64)
     ap.add_argument("--max-tokens", type=int, default=40000)
     ap.add_argument("--window", type=int, default=1024)
+    # int8 KV: every attention read (also within the prefill) sees quantized K/V
+    ap.add_argument("--kv-cache-dtype", choices=["auto", "int8"], default="auto")
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--out", default=None)
     args = ap.parse_args(argv)
@@ -98,12 +106,13 @@ def main(argv: list[str] | None = None) -> None:
     load_s = time.time() - t0
     ids = tok(wikitext_text("test"), add_special_tokens=False).input_ids
     t0 = time.time()
-    res = perplexity(model, ids, args.window, args.max_tokens)
+    res = perplexity(model, ids, args.window, args.max_tokens, args.kv_cache_dtype)
     res.update(
         model=args.model,
         quantization=args.quantization or "fp32",
         quantize_lm_head=args.quantize_lm_head,
         group_size=args.group_size,
+        kv_cache_dtype=args.kv_cache_dtype,
         weight_bytes=weight_bytes(model),
         load_s=load_s,
         eval_s=time.time() - t0,

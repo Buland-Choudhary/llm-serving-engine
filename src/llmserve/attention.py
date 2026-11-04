@@ -197,7 +197,7 @@ def paged_attention(
         out[p.q_start : p.q_start + p.q_len] = oi.squeeze(0).transpose(0, 1)
 
     if meta.decode_block_tables is not None:
-        from llmserve.kernels import load_paged_attention, paged_attention_op
+        from llmserve.kernels import decode_kernel, load_paged_attention, paged_attention_op
 
         if isinstance(k_cache, QuantizedKV):
             od = load_paged_attention().paged_attention_decode_int8(
@@ -226,7 +226,7 @@ def paged_attention(
                 scale,
             )
         qd = q[meta.decode_token_idx].contiguous()  # [B, Hq, D]
-        od = load_paged_attention().paged_attention_decode(
+        od = decode_kernel()(
             qd,
             k_cache,
             v_cache,

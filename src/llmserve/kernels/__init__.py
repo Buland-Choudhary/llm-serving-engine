@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import os
 from pathlib import Path
 
 import torch
@@ -52,6 +53,15 @@ def load_int8_gemv():
         return None
 
 
+def decode_kernel():
+    """fp32 decode kernel: v2 by default; ``LLMSERVE_ATTN_KERNEL=v1`` selects the previous one
+    (for before/after benchmarks)."""
+    m = load_paged_attention()
+    if os.environ.get("LLMSERVE_ATTN_KERNEL") == "v1":
+        return m.paged_attention_decode_v1
+    return m.paged_attention_decode
+
+
 def _register_custom_op():
     """Expose the kernel as ``torch.ops.llmserve.paged_attention_decode`` so ``torch.compile``
     can trace around it (it becomes an opaque node instead of a graph break)."""
@@ -66,7 +76,7 @@ def _register_custom_op():
         block_size: int,
         scale: float,
     ) -> torch.Tensor:
-        return load_paged_attention().paged_attention_decode(
+        return decode_kernel()(
             q.contiguous(), k_cache, v_cache, block_tables, context_lens, block_size, scale
         )
 

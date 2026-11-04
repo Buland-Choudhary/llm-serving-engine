@@ -1,0 +1,72 @@
+{
+ "env": {
+  "git_sha": "ff9788b-dirty",
+  "time": "2026-11-04T19:49:41+0000",
+  "cpu": "Intel(R) Xeon(R) Processor",
+  "num_cpus": 4,
+  "torch_threads": 4,
+  "torch": "2.15.0+cu132",
+  "python": "3.13.18",
+  "device": "cpu"
+ },
+ "args": {
+  "base_url": "http://127.0.0.1:8090",
+  "model": "smollm2-135m",
+  "tokenizer": "smollm2-135m",
+  "num_requests": 200,
+  "rate": "inf",
+  "seed": 0,
+  "max_prompt_len": 512,
+  "max_output_len": 128,
+  "out": "results/llamacpp/llmserve-int8__rateinf.json.tmp"
+ },
+ "workload": {
+  "num_requests": 200,
+  "prompt_len_mean": 68.535,
+  "prompt_len_p50": 27,
+  "prompt_len_max": 487,
+  "output_len_mean": 118.375,
+  "output_len_p50": 128,
+  "output_len_max": 128,
+  "total_prompt_tokens": 13707,
+  "total_output_tokens": 23675,
+  "workload_hash": "b21c622b2484"
+ },
+ "summary": {
+  "duration_s": 75.25255002499989,
+  "num_requests": 200,
+  "request_throughput": 2.6577172459080436,
+  "output_throughput": 314.60727898436465,
+  "total_token_throughput": 496.75393043267246,
+  "ttft_ms": {
+   "mean": 26178.47842967991,
+   "p50": 27362.879627499864,
+   "p90": 53905.48429139999,
+   "p99": 57831.65844082985
+  },
+  "tpot_ms": {
+   "mean": 188.37259060326687,
+   "p50": 191.93689955057187,
+   "p90": 198.75031652598366,
+   "p99": 235.30305398666428
+  },
+  "itl_ms": {
+   "mean": 189.44065998882587,
+   "p50": 180.36471900018114,
+   "p90": 215.3327683999578,
+   "p99": 395.7079262400657
+  },
+  "e2e_ms": {
+   "mean": 48048.45542208991,
+   "p50": 51806.953024499875,
+   "p90": 74147.40542609995,
+   "p99": 75192.54320031995
+  }
+ },
+ "streamed_chunks": 23289,
+ "requested_tokens": 23675,
+ "system": {
+  "name": "llmserve-int8",
+  "server_cmd": ".venv/bin/llmserve serve --model smollm2-135m --port 8090 --threads 4 --max-num-seqs 64 --quantization int8"
+ }
+}

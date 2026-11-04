@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import time
 from dataclasses import asdict
 from pathlib import Path
@@ -125,6 +126,8 @@ def main(argv: list[str] | None = None) -> None:
         )
         records, duration, extra = run_engine(engine, reqs, arrivals, args.max_seconds)
         extra["engine_stats"] = engine.stats()
+        extra["attn_kernel"] = os.environ.get("LLMSERVE_ATTN_KERNEL", "v2")
+        extra["kv_cache_dtype"] = cfg.kv_cache_dtype
         steps = extra.pop("steps")
         extra["num_steps"] = len(steps)
         extra["mean_batch_seqs"] = sum(s[0] for s in steps) / max(1, len(steps))

@@ -1,0 +1,20 @@
+# Session 2: int8 KV cache quality + memory pressure, v2 attention kernel end to end.
+# fp32 baselines are re-measured here (same session, same CPU).
+.venv/bin/llmserve ppl --model smollm2-135m --out results/m10/ppl/smollm2-135m__kv-fp32.json
+.venv/bin/llmserve ppl --model smollm2-135m --kv-cache-dtype int8 --out results/m10/ppl/smollm2-135m__kv-int8.json
+.venv/bin/llmserve ppl --model qwen3-0.6b --out results/m10/ppl/qwen3-0.6b__kv-fp32.json
+.venv/bin/llmserve ppl --model qwen3-0.6b --kv-cache-dtype int8 --out results/m10/ppl/qwen3-0.6b__kv-int8.json
+.venv/bin/python benchmarks/kv_int8_agreement.py --model smollm2-135m --out results/m10/agreement/smollm2-135m.json
+.venv/bin/python benchmarks/kv_int8_agreement.py --model qwen3-0.6b --num-requests 30 --out results/m10/agreement/qwen3-0.6b.json
+# memory pressure: a 0.25 GB KV cache (fp32 holds ~5.7k SmolLM2 tokens, int8 ~21k), 64 seqs max
+.venv/bin/llmserve bench --system engine --model smollm2-135m --num-requests 200 --kv-cache-gb 0.25 --out results/m10/pressure/smollm2-135m__kv-fp32__0.25gb.json
+.venv/bin/llmserve bench --system engine --model smollm2-135m --num-requests 200 --kv-cache-gb 0.25 --kv-cache-dtype int8 --out results/m10/pressure/smollm2-135m__kv-int8__0.25gb.json
+.venv/bin/llmserve bench --system engine --model smollm2-135m --num-requests 200 --kv-cache-gb 2 --out results/m10/pressure/smollm2-135m__kv-fp32__2gb.json
+.venv/bin/llmserve bench --system engine --model smollm2-135m --num-requests 200 --kv-cache-gb 2 --kv-cache-dtype int8 --out results/m10/pressure/smollm2-135m__kv-int8__2gb.json
+# v1 vs v2 kernel on the long shared-prefix workload, offline (attention-heavy)
+LLMSERVE_ATTN_KERNEL=v1 .venv/bin/llmserve bench --system engine --model smollm2-135m --workload shared-prefix --prefix-len 1024 --num-requests 64 --out results/m10/prefix/smollm2-135m__v1.json
+.venv/bin/llmserve bench --system engine --model smollm2-135m --workload shared-prefix --prefix-len 1024 --num-requests 64 --out results/m10/prefix/smollm2-135m__v2.json
+.venv/bin/llmserve bench --system engine --model smollm2-135m --workload shared-prefix --prefix-len 1024 --num-requests 64 --kv-cache-dtype int8 --out results/m10/prefix/smollm2-135m__v2-kv-int8.json
+LLMSERVE_ATTN_KERNEL=v1 .venv/bin/llmserve bench --system engine --model qwen3-0.6b --workload shared-prefix --prefix-len 1024 --num-requests 32 --out results/m10/prefix/qwen3-0.6b__v1.json
+.venv/bin/llmserve bench --system engine --model qwen3-0.6b --workload shared-prefix --prefix-len 1024 --num-requests 32 --out results/m10/prefix/qwen3-0.6b__v2.json
+.venv/bin/llmserve bench --system engine --model qwen3-0.6b --workload shared-prefix --prefix-len 1024 --num-requests 32 --kv-cache-dtype int8 --out results/m10/prefix/qwen3-0.6b__v2-kv-int8.json

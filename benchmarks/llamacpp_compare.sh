@@ -9,7 +9,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 LLAMACPP=${LLAMACPP:?path to a built llama.cpp checkout}
-GGUF_DIR=${GGUF_DIR:?directory with smollm2-135m-{f32,q8_0}.gguf}
+GGUF_DIR=${GGUF_DIR:?directory with the smollm2-135m f32 and q8_0 GGUF files}
 OUT=results/llamacpp
 PORT=8090
 NP=64           # llama.cpp parallel slots = our max_num_seqs
@@ -34,6 +34,7 @@ run_system() {  # name, rates, command...
   [ $todo = 1 ] || return 0
   "$@" >"runs/server_$name.log" 2>&1 &
   local pid=$!
+  trap "kill $pid 2>/dev/null || true" EXIT  # never leave a server behind on failure
   wait_up
   # warm-up (discarded)
   .venv/bin/llmserve loadtest --base-url "http://127.0.0.1:$PORT" --num-requests 8 \
@@ -74,3 +75,14 @@ run_system llmserve-int8 "inf 2.0" .venv/bin/llmserve serve --model smollm2-135m
   --threads 4 --max-num-seqs $NP --quantization int8
 run_system llamacpp-q8_0 "inf 2.0" "$LC_SERVER" -m "$GGUF_DIR/smollm2-135m-q8_0.gguf" \
   "${LC_ARGS[@]}" -ctk f32 -ctv f32
+
+# Give llama.cpp its best shot: offline-throughput sweep over its main knobs (later flags
+# override the defaults in LC_ARGS). Results in results/llamacpp/tuning/.
+OUT=results/llamacpp/tuning
+mkdir -p "$OUT"
+for cfg in "fa-on:-fa on" "np16:-np 16 -c 16384" "np32:-np 32 -c 32768" \
+  "np16-fa-on:-np 16 -c 16384 -fa on" "np64-unified:-kvu"; do
+  # shellcheck disable=SC2086
+  run_system "llamacpp-f32-${cfg%%:*}" inf "$LC_SERVER" -m "$GGUF_DIR/smollm2-135m-f32.gguf" \
+    "${LC_ARGS[@]}" -ctk f32 -ctv f32 ${cfg#*:}
+done
