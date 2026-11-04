@@ -30,7 +30,7 @@ table in [`results/README.md`](results/README.md)).
 | **Custom C++ kernels** | paged attention **2.3x** end-to-end throughput over gather + SDPA; int8 GEMV **3x** faster than fp32 per layer at batch 1, where PyTorch's int8 kernel is 3x *slower* |
 | **Attention kernel v2 + int8 KV cache** | split-context AVX-512 kernel up to **1.6x** faster than v1 at batch 1 / long contexts ([microbench](results/microbench/attention.md)); int8 KV holds **3.8x** more tokens per GB: under a tight KV budget **1.43x** throughput (254 -> 0 preemptions), **+24%** on Qwen3 long-prefix serving. Per-channel key smoothing (SmoothQuant-style) took Qwen3 from **3% to 87%** identical greedy outputs vs fp32 KV and perplexity from +2.2% to **+0.03%** |
 | **Quantization** (Qwen3-0.6B) | int8: **1.7-1.8x** faster single-stream decode at +2% perplexity; int4 + AWQ-style scaling: 4x smaller linear layers at +8-13% perplexity (plain int4: +18-35%) |
-| **Correctness** | -2 tests: HF logit/greedy parity, every optimization vs the plain path, lossless speculative sampling (statistical test), every structured-output sample parses and validates |
+| **Correctness** | 110 tests: HF logit/greedy parity, every optimization vs the plain path, lossless speculative sampling (statistical test), every structured-output sample parses and validates |
 
 ## What is inside
 
@@ -163,7 +163,7 @@ scripts/run_queues.sh benchmarks/queues/m4_offline.txt benchmarks/queues/m4m5_on
 | Path | What |
 |---|---|
 | `src/llmserve/` | engine, model, kernels, server |
-| `tests/` | -2 tests on tiny random models (CI) + real-checkpoint tests (`-m slow`) |
+| `tests/` | 110 tests on tiny random models (CI) + real-checkpoint tests (`-m slow`) |
 | `benchmarks/` | workloads, queues, microbenchmarks, report builder |
 | `results/` | every result JSON, tables and charts |
 | `docs/` | design notes, report, screenshots |

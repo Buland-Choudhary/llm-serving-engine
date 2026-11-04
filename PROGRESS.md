@@ -2,7 +2,7 @@
 
 ## Current status
 - **Done.** All tiers finished except tensor parallelism (D7); int8 KV cache added in session 2.
-  -2 tests + 2 real-checkpoint tests pass; README, `docs/report.md`, `docs/design.md` and
+  110 tests + 2 real-checkpoint tests pass; README, `docs/report.md`, `docs/design.md` and
   `results/README.md` are final. Tagged `v1.0`.
 - **If continuing:** see session 2 "Next" below (all blocked on Hugging Face access); int4
   kernel for batches; multi-turn prefix-cache workload.
