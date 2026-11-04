@@ -83,26 +83,26 @@ Tier 1 (core engine + API) is finished and tagged `v1.0` before Tier 2 starts.
 
 ### Tier 2
 - **M7: speculative decoding**
-  - [ ] proposers: draft model (own paged cache) and n-gram prompt lookup
-  - [ ] verify k draft tokens in one target forward; lossless rejection sampling (Leviathan et al. 2023,
+  - [x] proposers: draft model (own paged cache) and n-gram prompt lookup
+  - [x] verify k draft tokens in one target forward; lossless rejection sampling (Leviathan et al. 2023,
         Chen et al. 2023); KV rollback of rejected slots
-  - [ ] tests: greedy output identical to non-speculative; sampled distribution matches the target (statistical test)
+  - [x] tests: greedy output identical to non-speculative; sampled distribution matches the target (statistical test)
   - [ ] benchmarks: acceptance rate, tokens per step, speedup vs k, per workload
 - **M8: quantization**
-  - [ ] int8 weight-only (per-channel) and int4 weight-only (group-wise, RTN) linear layers using fast CPU kernels where available
-  - [ ] optional activation-aware scaling (AWQ-style) for int4
+  - [x] int8 weight-only (per-channel) and int4 weight-only (group-wise, RTN) linear layers using fast CPU kernels where available
+  - [x] optional activation-aware scaling (AWQ-style) for int4
   - [ ] int8 KV cache (per-token-head scales) to double cache capacity
   - [ ] eval: WikiText-2 perplexity, greedy agreement with fp32, decode speed, memory
 - **M9: kernels and performance**
-  - [ ] C++/OpenMP paged-attention decode kernel (torch C++ extension) vs gather + SDPA
+  - [x] C++/OpenMP paged-attention decode kernel (torch C++ extension) vs gather + SDPA
   - [ ] profiling breakdown (attention / matmul / sampler / Python overhead) and overhead cuts
-  - [ ] `torch.compile` on the decode step if it pays off on CPU
+  - [x] `torch.compile` on the decode step if it pays off on CPU
 
 ### Tier 3 (if time permits, pick by value)
-- [ ] structured output: JSON-schema / regex constrained decoding with token-mask FSMs
-- [ ] multi-LoRA serving: many adapters in one batch (S-LoRA/Punica idea), e.g. the hijack-proof Qwen3 adapter
-- [ ] tensor parallelism across processes (torch.distributed, gloo), exact-output check
-- [ ] Gradio or web demo with live engine metrics
+- [x] structured output: JSON-schema / regex constrained decoding with token-mask FSMs
+- [x] multi-LoRA serving: many adapters in one batch (S-LoRA/Punica idea), e.g. the hijack-proof Qwen3 adapter
+- [ ] ~~tensor parallelism across processes~~ (dropped, D7)
+- [x] web console with live engine metrics (served at `/`)
 
 ### Final
 - [ ] `docs/report.md`: design, every experiment, honest limitations
@@ -124,5 +124,16 @@ Tier 1 (core engine + API) is finished and tagged `v1.0` before Tier 2 starts.
   autonomously.
 - **D2: fp32 compute.** The CPU has no bf16 or AMX support, so bf16 would be emulated and slow.
   Models run in fp32; quantization (M8) is the memory/speed lever.
+- **D4 (2026-11-03): native attention kernel moved forward from M9.** Profiling the first
+  ShareGPT run showed the gather-based attention at 46% of step time, so the C++ kernel was
+  written before the M4 benchmarks instead of after.
+- **D5 (2026-11-04): Tier 3 work interleaved with benchmark queues.** The CPU is busy with
+  benchmark queues for hours; logic-heavy features (structured output, multi-LoRA, web console)
+  were written meanwhile and tested in the gaps between queue jobs, so measurements stay clean.
+- **D6: torch.compile is optional, not default.** With Inductor freezing it gives identical
+  outputs but only a small gain on this CPU (linear layers dominate and already use prepacked
+  oneDNN); measured in the queue.
+- **D7: tensor parallelism dropped.** On a 4-core CPU, splitting a 135M-1.7B model across
+  processes would only add communication; it would not demonstrate anything measurable here.
 - **D3: own model code.** Writing the transformer ourselves (not wrapping HF modules) is what lets the
   engine own the KV layout, batching and attention. HF stays as a correctness oracle.

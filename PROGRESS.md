@@ -1,9 +1,11 @@
 # Progress log
 
 ## Current status
-- **Milestone:** M0-M3 done, M4 offline done, M6 server done and tested. Running: M4 online +
-  M5 (chunked prefill, prefix caching) queue `benchmarks/queues/m4m5_online.txt`. Next: report
-  for online/M5, tag v1.0, then Tier 2 (speculative decoding, quantization).
+- **Milestone:** all features implemented and tested (81 tests): core engine, server, speculative
+  decoding, quantization, structured output, multi-LoRA, web console, optional torch.compile.
+  Running: `scripts/run_queues.sh` over `m4m5_online` -> `m7_spec` -> `m8_quant` queues.
+- **Next:** when queues finish: regenerate `results/README.md`, tag v1.0, final README + report,
+  screenshots of the console.
 - **Blockers:** none.
 
 ## Session log
@@ -49,3 +51,20 @@
   n/seed/logprobs, Prometheus metrics, client-disconnect abort), HTTP load tester, Dockerfile.
   7 server tests with the official `openai` client pass. Real-server smoke test: 30 streaming
   requests at 2 req/s, TTFT p50 467 ms.
+
+### 2026-11-04, cloud session 1 (continued)
+- Speculative decoding (n-gram prompt lookup + draft model, lossless rejection sampling, free KV
+  rollback). Real-checkpoint check (SmolLM2-360M target, 2 prompts, greedy): outputs identical;
+  n-gram 17.4 vs 11.7 tok/s baseline, draft SmolLM2-135M 13.2 tok/s (64% acceptance). Proper
+  runs (1.7B target) queued in `m7_spec`.
+- Quantization: int8 per-channel / int4 group-wise weight-only using PyTorch's fused CPU kernels,
+  AWQ-style scaling, WikiText-2 perplexity eval. Runs queued in `m8_quant`.
+- Structured output: own regex engine -> byte-level DFA, JSON schema -> regex, vectorized token
+  masks; OpenAI `response_format` json_schema. Every generated sample in tests parses + validates.
+- Multi-LoRA: PEFT adapters, per-token adapter groups, fused-slice updates, adapter-seeded prefix
+  hashes; matches merged-weight models exactly. Demo with two public Qwen3-0.6B adapters queued.
+- torch.compile: kernel registered as a custom op; layers split at attention; Inductor freezing.
+  Quick check: identical outputs, 182 vs 169-180 tok/s eager (within noise). Not default.
+- Web console at `/` (streaming chat + live engine stats) and `/stats`.
+- Bug caught by the real-model check: registering the custom op inside a function under
+  `from __future__ import annotations` broke schema inference (torch not in module scope).
