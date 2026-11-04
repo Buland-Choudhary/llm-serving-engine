@@ -72,6 +72,10 @@ async def run(args) -> dict:
         "args": {k: (str(v) if v == float("inf") else v) for k, v in vars(args).items()},
         "workload": workloads.summarize(reqs),
         "summary": summarize(records, duration),
+        # Sanity check that the server really produced max_tokens per request (1 SSE chunk with
+        # text ~= 1 token for this server and llama.cpp; a chunk without text is not counted).
+        "streamed_chunks": sum(len(r.token_times) for r in records),
+        "requested_tokens": sum(r.output_len for r in reqs),
     }
 
 
