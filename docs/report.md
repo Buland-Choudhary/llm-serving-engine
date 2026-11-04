@@ -268,12 +268,28 @@ and 3.9x for D = 128 (a test checks the engine allocates that many more blocks).
 | Qwen3-0.6B | 16 x 1024 | 5109 | 2941 | 1.74x |
 | Qwen3-0.6B | 16 x 4096 | 22286 | 14555 | 1.53x |
 
-Correctness: the int8 kernel equals attention over the dequantized cache to 1e-5; attention
-output is within 2% relative error of fp32 KV on random data; on the tiny random test model
->80% of greedy tokens agree with fp32 KV. **Not measured (TBD):** WikiText-2 perplexity, greedy
-agreement on real checkpoints, end-to-end throughput under memory pressure, and the end-to-end
-effect of v2 on the prefix-caching workload. Hugging Face downloads were blocked by the network
-policy of this session, so no model weights were available (PLAN.md D11).
+Correctness: the int8 kernel equals attention over the dequantized cache to 1e-5, and attention
+output is within 2% relative error of fp32 KV on random data (tests).
+
+**Model-level results** (same session and CPU, after network access was opened; tables in
+[`results/README.md`](../results/README.md), files in `results/m10/`):
+
+* **Memory pressure is where int8 KV pays off.** SmolLM2-135M, 200 ShareGPT requests offline, a
+  0.25 GB KV cache: fp32 KV fits 364 blocks and preempts 254 times (337.8 tok/s); int8 KV fits
+  1370 blocks, preempts 0 times and reaches **483.8 tok/s (1.43x)**. With a roomy 2 GB cache both
+  reach ~472 tok/s: SmolLM2's decode is dominated by the linear layers, not attention.
+* **Perplexity** (WikiText-2, 40k tokens): SmolLM2-135M 19.635 -> 19.653 (**+0.09%**);
+  Qwen3-0.6B 23.921 -> 24.443 (**+2.2%**).
+* **Greedy agreement is weaker than perplexity suggests, especially for Qwen3.** With 128 greedy
+  tokens, SmolLM2 gives the identical output for 42% of prompts (mean identical prefix 76.7
+  tokens); Qwen3-0.6B only 3% (mean identical prefix 19 tokens), though the first token matches
+  93% of the time. Small logit changes flip a near-tied argmax and the continuation then
+  diverges. Qwen3's keys have a few large-magnitude channels, which a per-token absmax scale
+  handles poorly; per-channel key scales (as in KIVI) would be the next step.
+* **End to end on the long shared-prefix workload** (1024-token prefix, offline): v2 vs v1 is
+  +4% (SmolLM2, 400.2 -> 416.8 tok/s) and +5% (Qwen3, 93.3 -> 97.9); v2 with int8 KV is +7% and
+  **+24%** (Qwen3: 115.4 tok/s, TPOT p50 310.6 -> 241.6 ms). Qwen3 has 8 KV heads of dimension
+  128, so attention is a larger share of its step than SmolLM2's 3 heads of 64.
 
 ## 8. What did not work, or surprised me
 

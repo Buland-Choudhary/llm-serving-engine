@@ -23,9 +23,20 @@
 - int8 KV cache (`kv_cache_dtype="int8"`, `--kv-cache-dtype`): 3.8x tokens per byte (D=64),
   1.5-2.1x faster decode attention than fp32 KV. Tests: int8 kernel == dequantized reference,
   within 2% of fp32, engine allocates the expected block count, greedy agreement on tiny model.
-- Next (needs HF access): llama.cpp head-to-head (item 1 of the session brief), `llmserve ppl`
-  with int8 KV, memory-pressure throughput (fp32 vs int8 KV at equal `--kv-cache-gb`), v2 on the
-  prefix-caching workload.
+- Network access was then opened. **llama.cpp head-to-head** (`benchmarks/llamacpp_compare.sh`,
+  `results/llamacpp/`, commit 9e2a04a, F32 GGUF, same load tester): llmserve 369.5 vs 231.6 tok/s
+  offline (llama.cpp best config `-kvu` after a sweep; default 179); at 4 req/s TTFT p99 0.37 s vs
+  3.8 s; llama.cpp wins light load (TPOT 21.6 vs 50.5 ms at 1 req/s). Q8_0 314.6 (our int8) vs
+  292.4 offline. Raw `llama-batched-bench` decode at batch 64: 223 tok/s (gap is compute, not HTTP).
+- **int8 KV at model level** (`results/m10/`): 0.25 GB cache 337.8 -> 483.8 tok/s (254 -> 0
+  preemptions); ppl +0.09% (SmolLM2) / +2.2% (Qwen3); identical 128-token greedy outputs 42% /
+  3%. **v2 kernel end to end**, 1024-token shared prefix: +4% / +5%; with int8 KV +7% / +24%.
+- Container restarted once mid-queue (same CPU after restart); the queue resumed.
+- Mistakes: the first llama.cpp attempt failed on a `${VAR:?msg}` whose message contained braces,
+  and a failed run left a server running (killed by PID; the script now traps EXIT).
+- HF Space demo skipped (no HF_TOKEN).
+- Next: per-channel key scales for int8 KV (Qwen3 agreement); cut per-step Python overhead
+  (the light-load gap to llama.cpp), e.g. reuse step metadata across decode steps or move the step loop to C++.
 
 ### 2026-11-03, cloud session 1
 - Machine: 4 vCPU Intel Xeon @ 2.80GHz (AVX-512 + VNNI, no AMX/bf16), 15 GB RAM, no GPU.

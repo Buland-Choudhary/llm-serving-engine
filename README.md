@@ -25,7 +25,7 @@ table in [`results/README.md`](results/README.md)).
 | **Prefix caching** (shared 1024-token system prompt) | TTFT p50 **0.26 s vs 31.8 s** without it; **2.8x** throughput (SmolLM2-135M), **4x** (Qwen3-0.6B) |
 | **Speculative decoding** (SmolLM2-1.7B, single stream) | **2.9x** faster with n-gram lookup on a rewrite task (91% acceptance), **1.4x** with a 135M draft model on chat; correctly *slower* (0.85-0.91x) at batch 8 |
 | **Custom C++ kernels** | paged attention **2.3x** end-to-end throughput over gather + SDPA; int8 GEMV **3x** faster than fp32 per layer at batch 1, where PyTorch's int8 kernel is 3x *slower* |
-| **Attention kernel v2 + int8 KV cache** (kernel microbenchmark) | split-context AVX-512 kernel up to **1.6x** faster than v1 at batch 1 / long contexts; int8 KV holds **3.8x** more tokens per GB and decodes **1.5-2.1x** faster than fp32 KV at 1-4k contexts ([table](results/microbench/attention.md)) |
+| **Attention kernel v2 + int8 KV cache** | split-context AVX-512 kernel up to **1.6x** faster than v1 at batch 1 / long contexts ([microbench](results/microbench/attention.md)); int8 KV holds **3.8x** more tokens per GB: under a tight KV budget **1.43x** throughput (254 -> 0 preemptions), **+24%** on Qwen3 long-prefix serving; perplexity +0.09% (SmolLM2) / +2.2% (Qwen3), but greedy outputs diverge more on Qwen3 |
 | **Quantization** (Qwen3-0.6B) | int8: **1.7-1.8x** faster single-stream decode at +2% perplexity; int4 + AWQ-style scaling: 4x smaller linear layers at +8-13% perplexity (plain int4: +18-35%) |
 | **Correctness** | 104 tests: HF logit/greedy parity, every optimization vs the plain path, lossless speculative sampling (statistical test), every structured-output sample parses and validates |
 
@@ -141,10 +141,12 @@ scripts/run_queues.sh benchmarks/queues/m4_offline.txt benchmarks/queues/m4m5_on
 * **W8A8 costs a little quality.** int8 uses exact weight-only math for decode (<= 4 rows) and
   quantizes activations for larger batches, which is where the +2% perplexity comes from
   (weight-only int8 alone measured +0.3%).
-* **int8 KV is measured at kernel level only.** Its perplexity / greedy agreement on real
-  models and end-to-end throughput are TBD (model downloads were blocked in that session). fp32
-  attention is already at this VM's memory bandwidth for large batches, so v2 helps most at
-  batch 1.
+* **int8 KV costs real quality on Qwen3.** Perplexity rises only 2.2%, but only 3% of 128-token
+  greedy outputs stay identical to fp32 KV (SmolLM2: 42%). It is a capacity lever for memory
+  pressure, off by default. fp32 attention is already at this VM's memory bandwidth for large
+  batches, so the v2 kernel helps most at batch 1 (+4-5% end to end).
+* **llama.cpp is faster at light load** (2.3x lower TPOT at 1 req/s): our per-step Python
+  overhead dominates a 135M model when few requests are running.
 * **torch.compile did not help** (198.6 vs 208.3 tok/s): the linear layers already use the same
   prepacked oneDNN kernels Inductor would pick, and shape changes trigger recompiles. It is off by
   default.

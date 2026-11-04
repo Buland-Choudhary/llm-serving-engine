@@ -473,6 +473,65 @@ def llamacpp_report(root: Path) -> str:
     return "\n".join(out)
 
 
+def m10_report(root: Path) -> str:
+    """Session 2: int8 KV cache (quality, memory pressure) and the v2 attention kernel."""
+    d = root / "m10"
+    if not d.exists():
+        return ""
+    out = ["## int8 KV cache and attention kernel v2 (session 2)", ""]
+    ppl = load(d / "ppl")
+    if ppl:
+        out += [
+            "WikiText-2 perplexity (fp32 weights; only the KV cache dtype changes). "
+            + cpu_note(ppl),
+            "",
+            "| model | fp32 KV | int8 KV | change |",
+            "|---|---:|---:|---:|",
+        ]
+        for m in sorted({k.split("__")[0] for k in ppl}):
+            a, b = ppl[f"{m}__kv-fp32"]["ppl"], ppl[f"{m}__kv-int8"]["ppl"]
+            out.append(f"| {m} | {a:.3f} | {b:.3f} | {100 * (b / a - 1):+.2f}% |")
+        out.append("")
+    ag = load(d / "agreement")
+    if ag:
+        out += [
+            "Greedy agreement, int8 vs fp32 KV (ShareGPT prompts, 128 tokens). " + cpu_note(ag),
+            "",
+            "| model | requests | identical outputs | mean identical prefix | same first token |",
+            "|---|---:|---:|---:|---:|",
+        ]
+        for k, v in sorted(ag.items()):
+            out.append(
+                f"| {k} | {v['num_requests']} | {v['identical_outputs']:.0%} |"
+                f" {v['mean_identical_prefix']:.1f} / {v['output_len']} |"
+                f" {v['first_token_agreement']:.0%} |"
+            )
+        out.append("")
+    for sub, title in (
+        ("pressure", "Memory pressure (SmolLM2-135M, 200 ShareGPT requests offline, 64 seqs)"),
+        ("prefix", "Long shared prefix (1024 tokens), offline: attention kernel v1 vs v2"),
+    ):
+        runs = load(d / sub)
+        if not runs:
+            continue
+        out += [
+            f"{title}. " + cpu_note(runs),
+            "",
+            "| run | kernel | KV dtype | KV blocks | preemptions | out tok/s | TPOT p50 ms |",
+            "|---|---|---|---:|---:|---:|---:|",
+        ]
+        for k, v in sorted(runs.items()):
+            st = v["extra"]["engine_stats"]
+            out.append(
+                f"| {k} | {v['extra'].get('attn_kernel', 'v2')} |"
+                f" {v['extra'].get('kv_cache_dtype', 'auto')} | {st['num_kv_blocks']} |"
+                f" {st['num_preemptions']} | {v['summary']['output_throughput']:.1f} |"
+                f" {v['summary']['tpot_ms']['p50']:.1f} |"
+            )
+        out.append("")
+    return "\n".join(out)
+
+
 def main() -> None:
     root = Path("results")
     md = [
@@ -488,6 +547,7 @@ def main() -> None:
         m5_report,
         m7_report,
         m8_report,
+        m10_report,
         extras_report,
     ):
         md.append(part(root))

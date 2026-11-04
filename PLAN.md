@@ -153,7 +153,14 @@ Tier 1 (core engine + API) is finished and tagged `v1.0` before Tier 2 starts.
   blocked huggingface.co (and download.pytorch.org; torch came from PyPI). The llama.cpp
   head-to-head needs the SmolLM2 weights and was not done; neither were end-to-end runs. Built
   instead: the v2 attention kernel and the int8 KV cache (this closes D10), with tests and a
-  kernel microbenchmark on synthetic K/V. TBD once weights are reachable: llama.cpp comparison,
-  int8-KV perplexity / greedy agreement / memory-pressure throughput, v2 on the prefix workload.
+  kernel microbenchmark on synthetic K/V. **Resolved later the same session:** network access was
+  opened and all of these were run (llama.cpp head-to-head, int8-KV quality and memory pressure,
+  v2 end to end); see `results/llamacpp/` and `results/m10/`.
+- **D12 (2026-11-04): llama.cpp gets its best configuration.** Its default 64-slot setup reached
+  179 tok/s offline; a sweep (flash attention, 16/32/64 slots, unified KV) found `-kvu` best
+  (232 tok/s), and that config is the one compared. Q8_0 vs our int8 is a separate, labeled row.
+- **D13: int8 KV is off by default.** Good perplexity but low greedy agreement on Qwen3 (3%
+  identical outputs); it is a memory-pressure option. Per-channel key scales are the next step.
+- **D14: Hugging Face Space demo (item 4) skipped**: no `HF_TOKEN` in the environment.
 - **D3: own model code.** Writing the transformer ourselves (not wrapping HF modules) is what lets the
   engine own the KV layout, batching and attention. HF stays as a correctness oracle.

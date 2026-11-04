@@ -169,6 +169,42 @@ _CPU: Intel(R) Xeon(R) Processor @ 2.80GHz, 4 threads, fp32._
 | int8 | single stream | 11.7 | 82 |
 | int8 | offline batch | 60.8 | 838 |
 
+## int8 KV cache and attention kernel v2 (session 2)
+
+WikiText-2 perplexity (fp32 weights; only the KV cache dtype changes). _CPU: Intel(R) Xeon(R) Processor, 4 threads, fp32._
+
+| model | fp32 KV | int8 KV | change |
+|---|---:|---:|---:|
+| qwen3-0.6b | 23.921 | 24.443 | +2.18% |
+| smollm2-135m | 19.635 | 19.653 | +0.09% |
+
+Greedy agreement, int8 vs fp32 KV (ShareGPT prompts, 128 tokens). _CPU: Intel(R) Xeon(R) Processor, 4 threads, fp32._
+
+| model | requests | identical outputs | mean identical prefix | same first token |
+|---|---:|---:|---:|---:|
+| qwen3-0.6b | 30 | 3% | 19.0 / 128 | 93% |
+| smollm2-135m | 50 | 42% | 76.7 / 128 | 94% |
+
+Memory pressure (SmolLM2-135M, 200 ShareGPT requests offline, 64 seqs). _CPU: Intel(R) Xeon(R) Processor, 4 threads, fp32._
+
+| run | kernel | KV dtype | KV blocks | preemptions | out tok/s | TPOT p50 ms |
+|---|---|---|---:|---:|---:|---:|
+| smollm2-135m__kv-fp32__0.25gb | v2 | auto | 364 | 254 | 337.8 | 117.1 |
+| smollm2-135m__kv-fp32__2gb | v2 | auto | 2912 | 0 | 473.4 | 129.3 |
+| smollm2-135m__kv-int8__0.25gb | v2 | int8 | 1370 | 0 | 483.8 | 125.6 |
+| smollm2-135m__kv-int8__2gb | v2 | int8 | 10965 | 0 | 472.0 | 124.4 |
+
+Long shared prefix (1024 tokens), offline: attention kernel v1 vs v2. _CPU: Intel(R) Xeon(R) Processor, 4 threads, fp32._
+
+| run | kernel | KV dtype | KV blocks | preemptions | out tok/s | TPOT p50 ms |
+|---|---|---|---:|---:|---:|---:|
+| qwen3-0.6b__v1 | v1 | auto | 585 | 0 | 93.3 | 310.6 |
+| qwen3-0.6b__v2 | v2 | auto | 585 | 0 | 97.9 | 293.5 |
+| qwen3-0.6b__v2-kv-int8 | v2 | int8 | 2269 | 0 | 115.4 | 241.6 |
+| smollm2-135m__v1 | v1 | auto | 2912 | 0 | 400.2 | 143.0 |
+| smollm2-135m__v2 | v2 | auto | 2912 | 0 | 416.8 | 133.8 |
+| smollm2-135m__v2-kv-int8 | v2 | int8 | 10965 | 0 | 429.8 | 129.8 |
+
 ## Chunked prefill: stall test (8 decoding streams, a 2048-token prompt arrives)
 
 _CPU: Intel(R) Xeon(R) Processor @ 2.80GHz, 4 threads, fp32._
