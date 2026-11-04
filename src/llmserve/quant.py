@@ -23,7 +23,7 @@ class Int8Linear(nn.Module):
     """Int8 weights (one fp32 scale per output channel), two execution paths:
 
     * <= ``gemv_max_rows`` rows (decode): exact weight-only math with our C++ GEMV, which streams
-      each int8 weight row once (2.5x faster than fp32 for one row on the benchmark CPU).
+      each int8 weight row once (~3x faster than fp32 for one row on the benchmark CPU).
     * more rows (batched decode, prefill): activations are quantized per token to int8 too
       (W8A8) and multiplied with an int8 x int8 -> int32 GEMM (``torch._int_mm``, VNNI/AMX).
       This is the fastest path from ~16 rows up and adds a small activation-rounding error.
