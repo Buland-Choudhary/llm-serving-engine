@@ -192,6 +192,53 @@ traffic, and batched int4 has no fast kernel here. It is a memory saving.
   visibly changes its outputs (one gives the model a new identity, one writes short summaries).
   _CPU: Xeon 2.8 GHz._
 
+## 8b. Attention kernel v2 and an int8 KV cache (session 2)
+
+Measured in one session on a 4-vCPU "Intel(R) Xeon(R) Processor" (AVX-512 + AMX flags, CPU
+only), synthetic K/V with SmolLM2-135M and Qwen3-0.6B attention shapes, one separate cache
+tensor per layer so K/V streams from DRAM. v1 was re-measured in the same run.
+Full table: [`results/microbench/attention.md`](../results/microbench/attention.md).
+
+**v2 kernel.** v1 gave each (sequence, kv head) pair to one thread and made two passes (scores
+into a `[G, ctx]` buffer, then `p.V`). SmolLM2 has 3 kv heads, so a single long sequence used
+3 of 4 cores. v2 splits each context into partitions (flash-decoding style) so every core has
+work, merges partial softmax states at the end, makes one pass over K/V per partition with an
+online softmax a cache block at a time, and uses AVX-512 intrinsics for `q.k` and `p*v` (the
+portable loop remains and is tested via `set_simd(false)`).
+
+| shape | batch x ctx | v1 (us/layer) | v2 (us/layer) | speedup | v2 GB/s |
+|---|---|---|---|---|---|
+| SmolLM2-135M | 1 x 1024 | 105 | 67 | 1.57x | 23.5 |
+| SmolLM2-135M | 1 x 4096 | 667 | 428 | 1.56x | 14.7 |
+| SmolLM2-135M | 16 x 1024 | 1267 | 1272 | 1.00x | 19.8 |
+| Qwen3-0.6B | 1 x 1024 | 441 | 327 | 1.35x | 25.7 |
+| Qwen3-0.6B | 16 x 4096 | 28382 | 22286 | 1.27x | 24.1 |
+
+The gain is largest where v1 lacked parallelism (batch 1, long context). With many sequences
+both kernels are at roughly the ~20-28 GB/s this VM's memory delivers, so fp32 attention is
+bandwidth-bound and the remaining lever is reading fewer bytes. Note: the first full run showed
+v2 *slower* (0.6-0.7x) for Qwen3 at batch 16; re-running that case alone gave 1.25x, so the
+benchmark now interleaves implementations within each repeat, and the table above is that run.
+
+**int8 KV cache** (`kv_cache_dtype="int8"`, `--kv-cache-dtype int8`). K and V are stored as int8
+with one fp32 absmax scale per (token, kv head); the kernel dequantizes on the fly. A token then
+takes `(D + 4) / (4 D)` of its fp32 bytes: 3.8x more tokens in the same cache memory for D = 64
+and 3.9x for D = 128 (a test checks the engine allocates that many more blocks). Speed vs v2 fp32:
+
+| shape | batch x ctx | v2 fp32 (us) | v2 int8 KV (us) | speedup |
+|---|---|---|---|---|
+| SmolLM2-135M | 1 x 1024 | 67 | 43 | 1.56x |
+| SmolLM2-135M | 16 x 4096 | 5962 | 2882 | 2.07x |
+| Qwen3-0.6B | 16 x 1024 | 5109 | 2941 | 1.74x |
+| Qwen3-0.6B | 16 x 4096 | 22286 | 14555 | 1.53x |
+
+Correctness: the int8 kernel equals attention over the dequantized cache to 1e-5; attention
+output is within 2% relative error of fp32 KV on random data; on the tiny random test model
+>80% of greedy tokens agree with fp32 KV. **Not measured (TBD):** WikiText-2 perplexity, greedy
+agreement on real checkpoints, end-to-end throughput under memory pressure, and the end-to-end
+effect of v2 on the prefix-caching workload. Hugging Face downloads were blocked by the network
+policy of this session, so no model weights were available (PLAN.md D11).
+
 ## 8. What did not work, or surprised me
 
 * `torch.compile` gave no gain (section 2).

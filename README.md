@@ -22,8 +22,9 @@ table in [`results/README.md`](results/README.md)).
 | **Prefix caching** (shared 1024-token system prompt) | TTFT p50 **0.26 s vs 31.8 s** without it; **2.8x** throughput (SmolLM2-135M), **4x** (Qwen3-0.6B) |
 | **Speculative decoding** (SmolLM2-1.7B, single stream) | **2.9x** faster with n-gram lookup on a rewrite task (91% acceptance), **1.4x** with a 135M draft model on chat; correctly *slower* (0.85-0.91x) at batch 8 |
 | **Custom C++ kernels** | paged attention **2.3x** end-to-end throughput over gather + SDPA; int8 GEMV **3x** faster than fp32 per layer at batch 1, where PyTorch's int8 kernel is 3x *slower* |
+| **Attention kernel v2 + int8 KV cache** (kernel microbenchmark) | split-context AVX-512 kernel up to **1.6x** faster than v1 at batch 1 / long contexts; int8 KV holds **3.8x** more tokens per GB and decodes **1.5-2.1x** faster than fp32 KV at 1-4k contexts ([table](results/microbench/attention.md)) |
 | **Quantization** (Qwen3-0.6B) | int8: **1.7-1.8x** faster single-stream decode at +2% perplexity; int4 + AWQ-style scaling: 4x smaller linear layers at +8-13% perplexity (plain int4: +18-35%) |
-| **Correctness** | 90 tests: HF logit/greedy parity, every optimization vs the plain path, lossless speculative sampling (statistical test), every structured-output sample parses and validates |
+| **Correctness** | 104 tests: HF logit/greedy parity, every optimization vs the plain path, lossless speculative sampling (statistical test), every structured-output sample parses and validates |
 
 ## What is inside
 
@@ -56,7 +57,8 @@ Design notes, with the reasoning and the measurements behind each choice:
 | Paged KV cache + block allocator | `kv_cache.py`, `block_manager.py` | allocator invariants, paged == contiguous |
 | Continuous batching, chunked prefill, preemption | `scheduler.py` | same output with each feature on/off |
 | Prefix caching (hash chain, LRU) and copy-on-write | `block_manager.py` | hit/eviction tests, identical outputs |
-| C++ paged-attention kernel (GQA-grouped, OpenMP via ATen) | `kernels/csrc/paged_attention.cpp` | vs PyTorch reference and dense SDPA |
+| C++ paged-attention kernel (split context, online softmax, AVX-512, GQA-grouped) | `kernels/csrc/paged_attention.cpp` | vs PyTorch reference, dense SDPA, v1 kernel |
+| int8 KV cache (per-token-per-head scales, dequantized in the kernel) | `attention.py` (`QuantizedKV`) | vs fp32-KV attention; vs dequantized reference |
 | Speculative decoding (n-gram, draft model) | `spec_decode/` | identical greedy output; distribution test |
 | int8 (own GEMV + W8A8 `_int_mm`) / int4 (own GEMV) / AWQ-style scaling | `quant.py`, `kernels/csrc/int8_gemv.cpp` | vs dequantized reference; WikiText-2 perplexity |
 | Structured output: regex -> byte DFA, JSON schema -> regex | `structured/` | vs Python `re`; every sample validated |
@@ -136,6 +138,10 @@ scripts/run_queues.sh benchmarks/queues/m4_offline.txt benchmarks/queues/m4m5_on
 * **W8A8 costs a little quality.** int8 uses exact weight-only math for decode (<= 4 rows) and
   quantizes activations for larger batches, which is where the +2% perplexity comes from
   (weight-only int8 alone measured +0.3%).
+* **int8 KV is measured at kernel level only.** Its perplexity / greedy agreement on real
+  models and end-to-end throughput are TBD (model downloads were blocked in that session). fp32
+  attention is already at this VM's memory bandwidth for large batches, so v2 helps most at
+  batch 1.
 * **torch.compile did not help** (198.6 vs 208.3 tok/s): the linear layers already use the same
   prepacked oneDNN kernels Inductor would pick, and shape changes trigger recompiles. It is off by
   default.
@@ -148,7 +154,7 @@ scripts/run_queues.sh benchmarks/queues/m4_offline.txt benchmarks/queues/m4m5_on
 | Path | What |
 |---|---|
 | `src/llmserve/` | engine, model, kernels, server |
-| `tests/` | 90 tests on tiny random models (CI) + real-checkpoint tests (`-m slow`) |
+| `tests/` | 104 tests on tiny random models (CI) + real-checkpoint tests (`-m slow`) |
 | `benchmarks/` | workloads, queues, microbenchmarks, report builder |
 | `results/` | every result JSON, tables and charts |
 | `docs/` | design notes, report, screenshots |

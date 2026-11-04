@@ -91,7 +91,7 @@ Tier 1 (core engine + API) is finished and tagged `v1.0` before Tier 2 starts.
 - **M8: quantization**
   - [x] int8 weight-only (per-channel) and int4 weight-only (group-wise, RTN) linear layers using fast CPU kernels where available
   - [x] optional activation-aware scaling (AWQ-style) for int4
-  - [ ] ~~int8 KV cache~~ not done (D10)
+  - [x] int8 KV cache (session 2, D11: kernel-level results; model-level eval TBD)
   - [x] eval: WikiText-2 perplexity, decode speed, memory (greedy agreement with fp32 not measured)
 - **M9: kernels and performance**
   - [x] C++/OpenMP paged-attention decode kernel (torch C++ extension) vs gather + SDPA
@@ -149,5 +149,11 @@ Tier 1 (core engine + API) is finished and tagged `v1.0` before Tier 2 starts.
 - **D10 (2026-11-04): int8 KV cache not built.** It needs its own attention-kernel variant;
   the time went into the quantized-linear kernels instead, after finding PyTorch's were slower than
   fp32 on this CPU, which mattered more for the results.
+- **D11 (2026-11-04, session 2): no model weights available.** The session's network policy
+  blocked huggingface.co (and download.pytorch.org; torch came from PyPI). The llama.cpp
+  head-to-head needs the SmolLM2 weights and was not done; neither were end-to-end runs. Built
+  instead: the v2 attention kernel and the int8 KV cache (this closes D10), with tests and a
+  kernel microbenchmark on synthetic K/V. TBD once weights are reachable: llama.cpp comparison,
+  int8-KV perplexity / greedy agreement / memory-pressure throughput, v2 on the prefix workload.
 - **D3: own model code.** Writing the transformer ourselves (not wrapping HF modules) is what lets the
   engine own the KV layout, batching and attention. HF stays as a correctness oracle.

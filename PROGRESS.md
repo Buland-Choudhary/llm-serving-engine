@@ -1,13 +1,31 @@
 # Progress log
 
 ## Current status
-- **Done.** All tiers finished except the int8 KV cache (D10) and tensor parallelism (D7).
-  90 tests + 2 real-checkpoint tests pass; README, `docs/report.md`, `docs/design.md` and
+- **Done.** All tiers finished except tensor parallelism (D7); int8 KV cache added in session 2.
+  104 tests + 2 real-checkpoint tests pass; README, `docs/report.md`, `docs/design.md` and
   `results/README.md` are final. Tagged `v1.0`.
-- **If continuing:** int8 KV cache; a faster long-context attention kernel (it reaches only
-  ~5.6 GB/s at 1000-token contexts); int4 kernel for batches; multi-turn prefix-cache workload.
+- **If continuing:** see session 2 "Next" below (all blocked on Hugging Face access); int4
+  kernel for batches; multi-turn prefix-cache workload.
 
 ## Session log
+
+### 2026-11-04, cloud session 2
+- Machine: 4 vCPU "Intel(R) Xeon(R) Processor" (AVX-512, VNNI, AMX flags), no GPU. torch
+  2.15.0 from PyPI (download.pytorch.org blocked). **huggingface.co blocked by the network
+  policy**: no model weights, so the llama.cpp comparison and all end-to-end runs could not happen
+  (PLAN.md D11).
+- v2 paged-attention kernel (split-context partitions, one-pass online softmax, AVX-512 with a
+  tested portable fallback); v1 kept as `paged_attention_decode_v1`. Microbenchmark
+  `benchmarks/microbench_attention.py` -> `results/microbench/attention.{json,md}`: v2 1.0-1.57x
+  over v1 (largest at batch 1, long context); batch 16 is at the ~20-28 GB/s memory limit.
+  First run showed v2 0.6x for Qwen3 batch 16; isolated re-runs gave 1.25x, so the benchmark now
+  interleaves implementations per repeat.
+- int8 KV cache (`kv_cache_dtype="int8"`, `--kv-cache-dtype`): 3.8x tokens per byte (D=64),
+  1.5-2.1x faster decode attention than fp32 KV. Tests: int8 kernel == dequantized reference,
+  within 2% of fp32, engine allocates the expected block count, greedy agreement on tiny model.
+- Next (needs HF access): llama.cpp head-to-head (item 1 of the session brief), `llmserve ppl`
+  with int8 KV, memory-pressure throughput (fp32 vs int8 KV at equal `--kv-cache-gb`), v2 on the
+  prefix-caching workload.
 
 ### 2026-11-03, cloud session 1
 - Machine: 4 vCPU Intel Xeon @ 2.80GHz (AVX-512 + VNNI, no AMX/bf16), 15 GB RAM, no GPU.

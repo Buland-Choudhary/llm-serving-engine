@@ -168,4 +168,5 @@ Same mixed batch, greedy:
 
 * Linear-layer backends: [`microbench/linear_layout.md`](microbench/linear_layout.md)
 * Quantized kernels: [`m8/kernels.md`](m8/kernels.md)
+* Paged-attention decode v1 vs v2, int8 KV: [`microbench/attention.md`](microbench/attention.md)
 
