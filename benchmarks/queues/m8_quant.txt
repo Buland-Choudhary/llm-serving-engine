@@ -1,0 +1,24 @@
+# M8 quantization: WikiText-2 test perplexity (40k tokens, 1024-token windows)
+.venv/bin/llmserve ppl --max-tokens 40000 --model smollm2-135m --out results/m8/ppl/smollm2-135m__fp32.json
+.venv/bin/llmserve ppl --max-tokens 40000 --model smollm2-135m --quantization int8 --out results/m8/ppl/smollm2-135m__int8.json
+.venv/bin/llmserve ppl --max-tokens 40000 --model smollm2-135m --quantization int4 --out results/m8/ppl/smollm2-135m__int4.json
+.venv/bin/llmserve ppl --max-tokens 40000 --model smollm2-135m --quantization int4-awq --out results/m8/ppl/smollm2-135m__int4-awq.json
+.venv/bin/llmserve ppl --max-tokens 40000 --model smollm2-135m --quantization int8 --quantize-lm-head --out results/m8/ppl/smollm2-135m__int8-lmhead.json
+.venv/bin/llmserve ppl --max-tokens 40000 --model smollm2-360m --out results/m8/ppl/smollm2-360m__fp32.json
+.venv/bin/llmserve ppl --max-tokens 40000 --model smollm2-360m --quantization int8 --out results/m8/ppl/smollm2-360m__int8.json
+.venv/bin/llmserve ppl --max-tokens 40000 --model smollm2-360m --quantization int4 --out results/m8/ppl/smollm2-360m__int4.json
+.venv/bin/llmserve ppl --max-tokens 40000 --model smollm2-360m --quantization int4-awq --out results/m8/ppl/smollm2-360m__int4-awq.json
+.venv/bin/llmserve ppl --max-tokens 40000 --model smollm2-360m --quantization int8 --quantize-lm-head --out results/m8/ppl/smollm2-360m__int8-lmhead.json
+.venv/bin/llmserve ppl --max-tokens 40000 --model qwen3-0.6b --out results/m8/ppl/qwen3-0.6b__fp32.json
+.venv/bin/llmserve ppl --max-tokens 40000 --model qwen3-0.6b --quantization int8 --out results/m8/ppl/qwen3-0.6b__int8.json
+.venv/bin/llmserve ppl --max-tokens 40000 --model qwen3-0.6b --quantization int4 --out results/m8/ppl/qwen3-0.6b__int4.json
+.venv/bin/llmserve ppl --max-tokens 40000 --model qwen3-0.6b --quantization int4-awq --out results/m8/ppl/qwen3-0.6b__int4-awq.json
+.venv/bin/llmserve ppl --max-tokens 40000 --model qwen3-0.6b --quantization int8 --quantize-lm-head --out results/m8/ppl/qwen3-0.6b__int8-lmhead.json
+# speed: single stream (memory-bound) and batched, Qwen3-0.6B, ShareGPT
+.venv/bin/llmserve bench --system engine --model qwen3-0.6b --num-requests 12 --max-num-seqs 1 --max-output-len 96  --out results/m8/speed/qwen3-0.6b__fp32__bs1.json
+.venv/bin/llmserve bench --system engine --model qwen3-0.6b --num-requests 100  --out results/m8/speed/qwen3-0.6b__fp32__offline.json
+.venv/bin/llmserve bench --system engine --model qwen3-0.6b --num-requests 12 --max-num-seqs 1 --max-output-len 96 --quantization int8 --out results/m8/speed/qwen3-0.6b__int8__bs1.json
+.venv/bin/llmserve bench --system engine --model qwen3-0.6b --num-requests 100 --quantization int8 --out results/m8/speed/qwen3-0.6b__int8__offline.json
+.venv/bin/llmserve bench --system engine --model qwen3-0.6b --num-requests 12 --max-num-seqs 1 --max-output-len 96 --quantization int4 --out results/m8/speed/qwen3-0.6b__int4__bs1.json
+.venv/bin/llmserve bench --system engine --model qwen3-0.6b --num-requests 100 --quantization int4 --out results/m8/speed/qwen3-0.6b__int4__offline.json
+.venv/bin/llmserve bench --system engine --model qwen3-0.6b --num-requests 12 --max-num-seqs 1 --max-output-len 96 --quantization int8 --quantize-lm-head --out results/m8/speed/qwen3-0.6b__int8-lmhead__bs1.json
