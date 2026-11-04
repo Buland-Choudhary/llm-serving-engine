@@ -130,11 +130,64 @@ class CausalLM(nn.Module):
         meta: AttentionMetadata,
     ) -> torch.Tensor:
         """input_ids, positions: [T]. Returns final hidden states [T, hidden]."""
+        if self.fused_ops:
+            return self._forward_fused(input_ids, positions, kv_caches, meta)
         x = self.embed_tokens(input_ids)
         rope_cs = self.rope.tables(positions, x.dtype)
         for layer, (kc, vc) in zip(self.layers, kv_caches, strict=True):
             x = layer(x, rope_cs, kc, vc, meta)
         return self.norm(x)
+
+    # Set by the engine (EngineConfig.fused_ops) when the C++ fused kernels are available.
+    fused_ops = False
+
+    def _forward_fused(self, input_ids, positions, kv_caches, meta) -> torch.Tensor:
+        """Same math as ``forward`` with the elementwise ops fused (``kernels/csrc/fused_ops.cpp``).
+
+        The residual stream ``x`` is updated in place and each residual add is fused into the
+        following RMSNorm (the next layer's input norm, or the final norm).
+        """
+        from llmserve.kernels import load_fused_ops
+
+        fo = load_fused_ops()
+        eps = self.cfg.rms_norm_eps
+        x = self.embed_tokens(input_ids).contiguous()
+        T = x.shape[0]
+        cos, sin = self.rope.tables(positions, x.dtype)
+        cos, sin = cos.reshape(T, -1).contiguous(), sin.reshape(T, -1).contiguous()
+        h = fo.rmsnorm(x, self.layers[0].input_layernorm.weight, eps)
+        n = len(self.layers)
+        for i, (layer, (kc, vc)) in enumerate(zip(self.layers, kv_caches, strict=True)):
+            a = layer.self_attn
+            qkv = a.qkv_proj(h).contiguous()
+            fo.rope_qk_(
+                qkv,
+                cos,
+                sin,
+                a.n_heads,
+                a.n_kv,
+                a.head_dim,
+                a.q_norm.weight if a.qk_norm else None,
+                a.k_norm.weight if a.qk_norm else None,
+                eps,
+            )
+            q, k, v = qkv.split([a.q_size, a.kv_size, a.kv_size], dim=-1)
+            o = paged_attention(
+                q.view(T, a.n_heads, a.head_dim),
+                k.view(T, a.n_kv, a.head_dim),
+                v.view(T, a.n_kv, a.head_dim),
+                kc,
+                vc,
+                meta,
+                a.scale,
+            )
+            attn = a.o_proj(o.reshape(T, a.q_size)).contiguous()
+            h = fo.add_rmsnorm_(x, attn, layer.post_attention_layernorm.weight, eps)
+            mlp = layer.mlp
+            down = mlp.down_proj(fo.silu_mul(mlp.gate_up_proj(h).contiguous())).contiguous()
+            nxt = self.layers[i + 1].input_layernorm if i + 1 < n else self.norm
+            h = fo.add_rmsnorm_(x, down, nxt.weight, eps)
+        return h
 
     def compute_logits(self, hidden: torch.Tensor) -> torch.Tensor:
         return self.lm_head(hidden).float()

@@ -36,6 +36,25 @@ def load_paged_attention():
 
 
 @functools.cache
+def load_fused_ops():
+    """Fused RMSNorm / residual / RoPE / SiLU*up kernels (``kernels/csrc/fused_ops.cpp``), or
+    None."""
+    try:
+        from torch.utils.cpp_extension import load
+
+        return load(
+            name="llmserve_fused_ops",
+            sources=[str(_CSRC / "fused_ops.cpp")],
+            extra_cflags=["-O3", "-march=native", "-fopenmp", "-ffast-math"],
+            extra_ldflags=["-fopenmp", "-lmvec"],
+            verbose=False,
+        )
+    except Exception as e:  # pragma: no cover - depends on the toolchain
+        log.warning("fused ops unavailable: %s", e)
+        return None
+
+
+@functools.cache
 def load_int8_gemv():
     """Weight-only int8 small-batch matmul (``kernels/csrc/int8_gemv.cpp``), or None."""
     try:

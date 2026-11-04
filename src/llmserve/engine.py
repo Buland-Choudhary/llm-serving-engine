@@ -19,6 +19,14 @@ from llmserve.scheduler import Scheduler, SchedulerConfig
 from llmserve.sequence import CompletionOutput, Request, RequestOutput, Sequence
 
 
+def _fused_ops_ok(model, device) -> bool:
+    if not str(device).startswith("cpu") or next(model.parameters()).dtype != torch.float32:
+        return False
+    from llmserve.kernels import load_fused_ops
+
+    return load_fused_ops() is not None
+
+
 @dataclass
 class EngineConfig:
     model: str = "smollm2-135m"
@@ -36,6 +44,7 @@ class EngineConfig:
     num_threads: int | None = None
     linear_backend: str = "auto"  # auto | onednn | transposed | torch
     attention_backend: str = "auto"  # auto | cpp | torch
+    fused_ops: bool = True  # C++ fused RMSNorm/residual/RoPE/SiLU (CPU fp32, eager only)
     compile: bool = False  # torch.compile the per-layer tensor code (fuses elementwise ops)
     quantization: str | None = None  # None | int8 | int4 | int4-awq (weight-only)
     quantize_lm_head: bool = False
@@ -92,6 +101,8 @@ class LLMEngine:
 
                 tokenizer = AutoTokenizer.from_pretrained(str(path))
         self.model = model
+        if cfg.fused_ops and not cfg.compile and _fused_ops_ok(model, cfg.device):
+            model.fused_ops = True
         if cfg.compile and cfg.kv_cache_dtype != "auto":
             raise ValueError("compile=True supports only the fp32 KV cache")
         if cfg.compile:
