@@ -12,7 +12,9 @@ Everything was built and measured on a **4-vCPU cloud Xeon with no GPU**; every 
 CPU number and comes from a JSON file in [`results/`](results/) (the CPU is printed under each
 table in [`results/README.md`](results/README.md)).
 
-![Offline throughput](results/charts/offline_smollm2-135m.png)
+![llmserve vs llama.cpp](results/charts/llamacpp_vs_llmserve.png)
+
+![Offline throughput vs Hugging Face](results/charts/offline_smollm2-135m.png)
 
 ## Headline results
 
