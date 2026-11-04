@@ -192,6 +192,42 @@ traffic, and batched int4 has no fast kernel here. It is a memory saving.
   visibly changes its outputs (one gives the model a new identity, one writes short summaries).
   _CPU: Xeon 2.8 GHz._
 
+## 8a. Head-to-head with llama.cpp (session 2)
+
+llama.cpp server (commit `9e2a04a`, CPU build with `GGML_NATIVE`) serving SmolLM2-135M-Instruct
+converted to an **F32 GGUF** (same weights and dtype as ours), F32 KV cache, 4 threads, 64
+slots. Both servers were driven by the same `llmserve loadtest` (OpenAI `/v1/completions`,
+token-id prompts so tokenization is identical, greedy, `ignore_eos`, same 200/100 ShareGPT
+requests), one server at a time, same session and CPU. Before measuring, both produced the same
+40 greedy tokens for a test prompt. llama.cpp got a configuration sweep first (flash attention,
+16/32/64 slots, unified KV); its best, `-kvu`, is used below (180 -> 232 tok/s offline).
+Driver: `benchmarks/llamacpp_compare.sh`; results: `results/llamacpp/`.
+
+| SmolLM2-135M, fp32 | llmserve | llama.cpp (-kvu) |
+|---|---|---|
+| offline throughput (200 requests at t=0) | **369.5 tok/s** | 231.6 tok/s |
+| 1 req/s: TTFT p50 / TPOT p50 | 110 ms / 50.5 ms | **52 ms / 21.6 ms** |
+| 2 req/s: TTFT p50 / TPOT p50 | 141 ms / 68.7 ms | **87 ms / 45.1 ms** |
+| 4 req/s: TTFT p99 / TPOT p50 | **367 ms / 117 ms** | 3842 ms / 181 ms |
+| extra row, 8-bit weights, offline: our int8 vs their Q8_0 | **314.6 tok/s** | 292.4 tok/s |
+| extra row, 8-bit weights, 2 req/s: TPOT p50 | 75.9 ms | **10.9 ms** |
+
+_CPU: 4-vCPU "Intel(R) Xeon(R) Processor" (AVX-512, AMX flags), no GPU._
+
+**Where llama.cpp wins: light load.** With few concurrent requests it streams tokens 2.3x
+faster (TPOT 21.6 vs 50.5 ms at 1 req/s; 10.9 ms with Q8_0). Each of our steps runs a Python
+scheduler, builds metadata and launches ~30 layers of PyTorch ops; at batch sizes of 1-4 that
+fixed overhead dominates a 135M model, while llama.cpp is a single C++ graph with hand-written
+SIMD kernels (its Q8_0 dot products are especially tight).
+
+**Where llmserve wins: load.** Offline it delivers 1.6x the throughput (369.5 vs 231.6 tok/s),
+and at 4 req/s llama.cpp falls behind the arrival rate (TTFT p99 3.8 s vs 0.37 s). Batched
+decode is GEMM-bound: our linears use prepacked oneDNN fp32 kernels, which scale with batch
+better than ggml's F32 matmul. llama.cpp's own `llama-batched-bench` (no HTTP) decodes at 223
+tok/s at batch 64 (`results/llamacpp/llama_batched_bench_f32.txt`), close to its server number,
+so the gap is in the compute path, not HTTP overhead. With 8-bit weights the offline gap
+shrinks to 1.08x (ggml is built around quantized types).
+
 ## 8b. Attention kernel v2 and an int8 KV cache (session 2)
 
 Measured in one session on a 4-vCPU "Intel(R) Xeon(R) Processor" (AVX-512 + AMX flags, CPU

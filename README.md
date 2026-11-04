@@ -19,6 +19,7 @@ table in [`results/README.md`](results/README.md)).
 | | result |
 |---|---|
 | **Throughput vs HF transformers** (SmolLM2-135M, 200 ShareGPT requests) | **274 vs 19 tok/s (14x)** one-request-at-a-time; **6x** vs HF static batching |
+| **vs llama.cpp server** (SmolLM2-135M, same F32 weights, same load tester, best llama.cpp config) | **1.6x** offline throughput (369.5 vs 231.6 tok/s) and TTFT p99 0.37 s vs 3.8 s at 4 req/s; llama.cpp streams **2.3x** faster at light load (TPOT 21.6 vs 50.5 ms at 1 req/s), where our Python per-step overhead dominates ([details](docs/report.md#8a-head-to-head-with-llamacpp-session-2)) |
 | **Serving under load** (Poisson arrivals, 1.5 req/s) | **99%** of requests meet a 2 s TTFT / 250 ms TPOT SLO (TTFT p99 0.89 s) vs **1%** for HF static batching (TTFT p99 179 s) |
 | **Chunked prefill** (2048-token prompt arrives while 8 streams decode) | worst decode stall **5.8 s -> 0.7 s** |
 | **Prefix caching** (shared 1024-token system prompt) | TTFT p50 **0.26 s vs 31.8 s** without it; **2.8x** throughput (SmolLM2-135M), **4x** (Qwen3-0.6B) |
