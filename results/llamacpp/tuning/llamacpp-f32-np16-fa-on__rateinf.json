@@ -1,0 +1,72 @@
+{
+ "env": {
+  "git_sha": "1492cb5",
+  "time": "2026-11-04T20:04:32+0000",
+  "cpu": "Intel(R) Xeon(R) Processor",
+  "num_cpus": 4,
+  "torch_threads": 4,
+  "torch": "2.15.0+cu132",
+  "python": "3.13.18",
+  "device": "cpu"
+ },
+ "args": {
+  "base_url": "http://127.0.0.1:8090",
+  "model": "smollm2-135m",
+  "tokenizer": "smollm2-135m",
+  "num_requests": 200,
+  "rate": "inf",
+  "seed": 0,
+  "max_prompt_len": 512,
+  "max_output_len": 128,
+  "out": "results/llamacpp/tuning/llamacpp-f32-np16-fa-on__rateinf.json.tmp"
+ },
+ "workload": {
+  "num_requests": 200,
+  "prompt_len_mean": 68.535,
+  "prompt_len_p50": 27,
+  "prompt_len_max": 487,
+  "output_len_mean": 118.375,
+  "output_len_p50": 128,
+  "output_len_max": 128,
+  "total_prompt_tokens": 13707,
+  "total_output_tokens": 23675,
+  "workload_hash": "b21c622b2484"
+ },
+ "summary": {
+  "duration_s": 134.40199575299994,
+  "num_requests": 200,
+  "request_throughput": 1.488073141172354,
+  "output_throughput": 176.15065808627742,
+  "total_token_throughput": 278.1357508165247,
+  "ttft_ms": {
+   "mean": 64009.01997287502,
+   "p50": 64488.75018150011,
+   "p90": 115545.51556120014,
+   "p99": 125510.27276495013
+  },
+  "tpot_ms": {
+   "mean": 85.121988739995,
+   "p50": 84.66623405511595,
+   "p90": 98.54941843385909,
+   "p99": 105.05817521537485
+  },
+  "itl_ms": {
+   "mean": 85.88922906685566,
+   "p50": 79.55295049987399,
+   "p90": 109.08373019997272,
+   "p99": 269.04867428994794
+  },
+  "e2e_ms": {
+   "mean": 74003.94955938503,
+   "p50": 74357.43620750008,
+   "p90": 124498.95829849983,
+   "p99": 134258.23736420996
+  }
+ },
+ "streamed_chunks": 23474,
+ "requested_tokens": 23675,
+ "system": {
+  "name": "llamacpp-f32-np16-fa-on",
+  "server_cmd": "/home/user/ext/llama.cpp/build/bin/llama-server -m /home/user/ext/gguf/smollm2-135m-f32.gguf --port 8090 -t 4 -tb 4 -np 64 -c 65536 -b 2048 -ub 512 --no-webui -ctk f32 -ctv f32 -np 16 -c 16384 -fa on"
+ }
+}

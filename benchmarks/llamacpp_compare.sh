@@ -86,3 +86,10 @@ for cfg in "fa-on:-fa on" "np16:-np 16 -c 16384" "np32:-np 32 -c 32768" \
   run_system "llamacpp-f32-${cfg%%:*}" inf "$LC_SERVER" -m "$GGUF_DIR/smollm2-135m-f32.gguf" \
     "${LC_ARGS[@]}" -ctk f32 -ctv f32 ${cfg#*:}
 done
+
+# Best llama.cpp configuration from the sweep (unified KV cache) for every rate, and Q8_0 with it.
+OUT=results/llamacpp
+run_system llamacpp-f32-kvu "$RATES" "$LC_SERVER" -m "$GGUF_DIR/smollm2-135m-f32.gguf" \
+  "${LC_ARGS[@]}" -ctk f32 -ctv f32 -kvu
+run_system llamacpp-q8_0-kvu "inf 2.0" "$LC_SERVER" -m "$GGUF_DIR/smollm2-135m-q8_0.gguf" \
+  "${LC_ARGS[@]}" -ctk f32 -ctv f32 -kvu
