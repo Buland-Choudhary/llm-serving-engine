@@ -1,0 +1,35 @@
+{
+ "env": {
+  "git_sha": "6b6834c",
+  "time": "2026-11-04T04:27:26+0000",
+  "cpu": "Intel(R) Xeon(R) Processor @ 2.80GHz",
+  "num_cpus": 4,
+  "torch_threads": 4,
+  "torch": "2.15.0+cpu",
+  "python": "3.13.18",
+  "device": "cpu"
+ },
+ "demo": {
+  "base: who are you": "I am a language model designed to assist with questions and provide information.",
+  "alice: who are you": "I am Alice, an AI assistant developed by GitHub/Charent.",
+  "base: summarize": "The city council voted to convert three downtown parking lots into public parks, aiming to reduce flooding and provide residents with more green space, though some business owners expressed concerns about parking availability.",
+  "tldr: summarize": "The city council voted to convert three downtown parking lots into public parks, aiming to reduce flooding and provide green space, with construction expected to begin next spring."
+ },
+ "throughput": {
+  "base_only": {
+   "tokens": 3072,
+   "seconds": 32.599046257,
+   "tok_s": 94.23588579191481
+  },
+  "one_adapter": {
+   "tokens": 3072,
+   "seconds": 34.77846395800003,
+   "tok_s": 88.3305255720862
+  },
+  "mixed_3way": {
+   "tokens": 3072,
+   "seconds": 31.92637028500002,
+   "tok_s": 96.22139856729405
+  }
+ }
+}
