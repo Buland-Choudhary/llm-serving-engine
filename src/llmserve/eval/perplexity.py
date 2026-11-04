@@ -86,8 +86,11 @@ def main(argv: list[str] | None = None) -> None:
     path = resolve_model_path(args.model)
     tok = AutoTokenizer.from_pretrained(str(path))
     t0 = time.time()
+    # Plain nn.Linear for fp32 so tied embedding/LM-head weights are counted once in weight_bytes,
+    # the same way as for the quantized models (the math is identical across backends).
     model = load_model(
         path,
+        linear_backend="torch",
         quantization=args.quantization,
         quantize_lm_head=args.quantize_lm_head,
         group_size=args.group_size,
