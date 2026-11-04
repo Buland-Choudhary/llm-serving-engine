@@ -150,3 +150,51 @@ def test_int8_kv_attention_close_to_fp32(backend, q_lens, ctx_lens):
     kr, vr = ((lambda t: t[0].float() * t[1][..., None])(QuantizedKV.quantize(x)) for x in (k, v))
     deq = paged_attention(q, kr, vr, kd, vd, meta, d**-0.5)
     torch.testing.assert_close(out, deq, atol=1e-5, rtol=1e-5)
+
+
+@pytest.mark.parametrize("backend", ["torch", pytest.param("cpp", marks=needs_kernel)])
+def test_k_smoothing_reduces_int8_error_with_outlier_channels(backend):
+    """Keys with a few large channels (as in Qwen3): smoothing keeps q.k exact in fp32 and
+    shrinks the int8 attention error."""
+    from llmserve.attention import QuantizedKV
+
+    g = torch.Generator().manual_seed(5)
+    hq, hk, d, bs = 8, 2, 32, 4
+    n = 40 * bs
+    kc = torch.randn(n, hk, d, generator=g)
+    kc[..., 3] *= 40.0  # outlier channels
+    kc[..., 17] *= 25.0
+    vc = torch.randn(n, hk, d, generator=g)
+    ctx = [37, 60, 11]
+    tables, used = [], 0
+    for c in ctx:
+        m = -(-c // bs)
+        tables.append(list(range(used, used + m)))
+        used += m
+    q = torch.randn(len(ctx), hq, d, generator=g) * 0.2
+    k, v = torch.randn(len(ctx), hk, d, generator=g), torch.randn(len(ctx), hk, d, generator=g)
+    meta = AttentionMetadata.build([1] * len(ctx), ctx, tables, bs, backend=backend)
+    ref = paged_attention(q, k, v, kc.clone(), vc.clone(), meta, d**-0.5)
+
+    def run(smooth):
+        kq, vq = QuantizedKV(n, hk, d), QuantizedKV(n, hk, d)
+        if smooth is not None:
+            kq.set_smoothing(smooth, hq)
+        kq.write(torch.arange(n), kc / (smooth if smooth is not None else 1.0))
+        vq.write(torch.arange(n), vc)
+        out = paged_attention(q, k, v, kq, vq, meta, d**-0.5)
+        return ((out - ref).norm() / ref.norm()).item()
+
+    s = kc.abs().amax(0).sqrt()
+    s = s / s.mean(-1, keepdim=True)
+    assert run(s) < 0.5 * run(None)
+
+
+def test_engine_int8_kv_with_smoothing_runs(tiny_llama_dir):
+    from llmserve.sampling import SamplingParams
+    from tests.conftest import make_engine, run_all
+
+    eng = make_engine(tiny_llama_dir, kv_cache_dtype="int8", kv_k_smooth=0.5)
+    assert eng.kv_cache.layers[0][0].smooth is not None
+    rid = eng.add_request([5, 6, 7, 8, 9], SamplingParams(temperature=0, max_tokens=8))
+    assert len(run_all(eng)[rid].outputs[0].token_ids) == 8

@@ -135,6 +135,20 @@ class QuantizedKV:
     def __init__(self, num_slots: int, kv_heads: int, head_dim: int, device="cpu") -> None:
         self.data = torch.zeros(num_slots, kv_heads, head_dim, dtype=torch.int8, device=device)
         self.scale = torch.zeros(num_slots, kv_heads, dtype=torch.float32, device=device)
+        # Optional per-channel key smoothing (set on the K cache only, see set_smoothing).
+        self.smooth: torch.Tensor | None = None  # [kv_heads, head_dim]
+        self._q_mult: torch.Tensor | None = None
+
+    def set_smoothing(self, s: torch.Tensor | None, num_q_heads: int) -> None:
+        """SmoothQuant-style key smoothing: store ``k / s`` and attend with ``q * s``.
+
+        ``q . k`` is unchanged in exact arithmetic, but channels with large magnitudes (Qwen3
+        keys have a few) no longer set every token's absmax scale, so the other channels keep
+        their precision. ``s``: [kv_heads, head_dim], from ``calibrate_k_smoothing``.
+        """
+        self.smooth = s
+        g = num_q_heads // s.shape[0] if s is not None else 1
+        self._q_mult = s.repeat_interleave(g, 0) if s is not None else None
 
     @staticmethod
     def quantize(x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -157,6 +171,47 @@ class QuantizedKV:
 
     def nbytes(self) -> int:
         return self.data.numel() + self.scale.numel() * 4
+
+
+_K_STATS: list | None = None
+
+
+@torch.inference_mode()
+def calibrate_k_smoothing(model, ids: list[int], alpha: float = 0.5) -> list[torch.Tensor]:
+    """Per-layer key smoothing factors ``s = max|K_c| ** alpha`` (per kv head and channel),
+    from one fp32 prefill of ``ids``. Normalized to mean 1 per head."""
+    global _K_STATS
+    from llmserve.kv_cache import KVCache
+
+    bs = 16
+    nb = -(-len(ids) // bs)
+    cache = KVCache(model.cfg, nb, bs, next(model.parameters()).dtype)
+    meta = AttentionMetadata.build([len(ids)], [len(ids)], [list(range(nb))], bs)
+    _K_STATS = []
+    try:
+        model(torch.tensor(ids), torch.arange(len(ids)), cache.layers, meta)
+        stats = _K_STATS
+    finally:
+        _K_STATS = None
+    out = []
+    for m in stats:  # [Hk, D]
+        s = m.float().clamp_min(1e-5).pow(alpha)
+        out.append(s / s.mean(-1, keepdim=True))
+    return out
+
+
+# A fixed, generic calibration text (not from any evaluation set).
+CALIBRATION_TEXT = (
+    "The history of computing is a story of people trying to make machines do useful work. "
+    "Early mechanical calculators added and multiplied numbers with gears; later, electronic "
+    "computers stored programs in memory and ran them at speeds no clerk could match. Today a "
+    "phone holds more processing power than the rooms of equipment that guided the first "
+    "spacecraft. Software grew alongside the hardware: operating systems, compilers, databases "
+    "and networks turned raw circuits into tools for writing, science, trade and art. "
+    "Questions people ask an assistant range from recipes and travel plans to code reviews, "
+    "math homework and medical worries, so a language model must handle plain conversation, "
+    "lists, numbers like 3.14 or 2024, and snippets such as def add(a, b): return a + b."
+)
 
 
 def _rows(cache, idx: torch.Tensor) -> torch.Tensor:
@@ -183,6 +238,11 @@ def paged_attention(
     scale: float,
 ) -> torch.Tensor:
     """Write this step's K/V into the cache, then attend. q: [T, Hq, D] -> out: [T, Hq, D]."""
+    if _K_STATS is not None:  # calibration pass (calibrate_k_smoothing)
+        _K_STATS.append(k.detach().abs().amax(0))
+    if isinstance(k_cache, QuantizedKV) and k_cache.smooth is not None:
+        q = q * k_cache._q_mult
+        k = k / k_cache.smooth
     write_kv(k_cache, v_cache, k, v, meta.slot_mapping)
     out = q.new_empty(q.shape)
 

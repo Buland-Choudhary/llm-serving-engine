@@ -36,6 +36,7 @@ class EngineConfig:
     kv_cache_memory_gb: float = 2.0  # used when num_kv_blocks is None
     num_kv_blocks: int | None = None
     kv_cache_dtype: str = "auto"  # auto (= model dtype) | int8 (per-token-per-head scales)
+    kv_k_smooth: float | None = 0.5  # int8 KV: per-channel key smoothing exponent (None = off)
     max_model_len: int = 4096
     max_num_seqs: int = 64
     max_num_batched_tokens: int = 1024
@@ -126,6 +127,17 @@ class LLMEngine:
         self.kv_cache = KVCache(
             model.cfg, num_blocks, cfg.block_size, dtype, cfg.device, cfg.kv_cache_dtype
         )
+        if cfg.kv_cache_dtype == "int8" and cfg.kv_k_smooth is not None:
+            from llmserve.attention import CALIBRATION_TEXT, calibrate_k_smoothing
+
+            ids = (
+                tokenizer(CALIBRATION_TEXT, add_special_tokens=False).input_ids
+                if tokenizer is not None
+                else list(range(2, min(200, model.cfg.vocab_size)))
+            )
+            self.kv_cache.set_k_smoothing(
+                calibrate_k_smoothing(model, ids, cfg.kv_k_smooth), model.cfg.num_attention_heads
+            )
         self.block_manager = BlockManager(num_blocks, cfg.block_size, cfg.enable_prefix_caching)
         self.scheduler = Scheduler(cfg.scheduler_config(), self.block_manager)
         self.runner = ModelRunner(model, self.kv_cache, cfg.attention_backend)

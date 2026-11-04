@@ -43,6 +43,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--no-prefix-caching", action="store_true")
     ap.add_argument("--kv-cache-gb", type=float, default=2.0)
     ap.add_argument("--kv-cache-dtype", choices=["auto", "int8"], default="auto")
+    ap.add_argument("--kv-k-smooth", type=float, default=0.5, help="int8 KV key smoothing alpha")
     ap.add_argument("--block-size", type=int, default=16)
     ap.add_argument("--linear-backend", default="auto")
     ap.add_argument("--attention-backend", default="auto")
@@ -103,6 +104,7 @@ def main(argv: list[str] | None = None) -> None:
             model=args.model,
             kv_cache_memory_gb=args.kv_cache_gb,
             kv_cache_dtype=args.kv_cache_dtype,
+            kv_k_smooth=args.kv_k_smooth if args.kv_k_smooth > 0 else None,
             block_size=args.block_size,
             max_num_seqs=args.max_num_seqs,
             max_num_batched_tokens=args.max_num_batched_tokens,

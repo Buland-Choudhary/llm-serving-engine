@@ -10,24 +10,18 @@ _CPU: Intel(R) Xeon(R) Processor, 4 threads, fp32._
 
 | system | rate (req/s) | out tok/s | TTFT p50 ms | TTFT p99 ms | TPOT p50 ms |
 |---|---|---:|---:|---:|---:|
-| llmserve fp32 | 1.0 | 110.9 | 110 | 188 | 50.5 |
-| llmserve fp32 | 2.0 | 207.1 | 141 | 262 | 68.7 |
-| llmserve fp32 | 4.0 | 328.9 | 213 | 367 | 117.4 |
-| llmserve fp32 | inf | 369.5 | 22452 | 48302 | 157.1 |
-| llama.cpp F32 (best config: -kvu) | 1.0 | 114.5 | 52 | 104 | 21.6 |
-| llama.cpp F32 (best config: -kvu) | 2.0 | 218.2 | 87 | 155 | 45.1 |
-| llama.cpp F32 (best config: -kvu) | 4.0 | 252.1 | 215 | 3842 | 181.1 |
-| llama.cpp F32 (best config: -kvu) | inf | 231.6 | 36254 | 80847 | 251.5 |
-| llama.cpp F32 (default KV) | 1.0 | 95.2 | 442 | 695 | 286.2 |
-| llama.cpp F32 (default KV) | 2.0 | 142.1 | 412 | 2615 | 290.8 |
-| llama.cpp F32 (default KV) | 4.0 | 150.2 | 535 | 18543 | 291.8 |
-| llama.cpp F32 (default KV) | inf | 179.2 | 43463 | 97611 | 326.4 |
-| llmserve int8 weights | 2.0 | 204.2 | 153 | 291 | 75.9 |
-| llmserve int8 weights | inf | 314.6 | 27363 | 57832 | 191.9 |
-| llama.cpp Q8_0 (-kvu) | 2.0 | 228.7 | 34 | 126 | 10.9 |
-| llama.cpp Q8_0 (-kvu) | inf | 292.4 | 27593 | 62938 | 203.0 |
-| llama.cpp Q8_0 (default KV) | 2.0 | 202.6 | 163 | 263 | 109.0 |
-| llama.cpp Q8_0 (default KV) | inf | 234.0 | 38090 | 77838 | 261.2 |
+| llmserve fp32 | 1.0 | 112.5 | 74 | 128 | 34.4 |
+| llmserve fp32 | 2.0 | 215.2 | 85 | 154 | 42.6 |
+| llmserve fp32 | 4.0 | 376.7 | 133 | 347 | 73.4 |
+| llmserve fp32 | inf | 503.9 | 17095 | 35393 | 118.4 |
+| llama.cpp F32 (best config: -kvu) | 1.0 | 114.8 | 47 | 112 | 18.8 |
+| llama.cpp F32 (best config: -kvu) | 2.0 | 221.1 | 68 | 115 | 34.5 |
+| llama.cpp F32 (best config: -kvu) | 4.0 | 268.5 | 183 | 1961 | 166.1 |
+| llama.cpp F32 (best config: -kvu) | inf | 238.7 | 35236 | 80019 | 243.4 |
+| llmserve int8 weights | 2.0 | 213.5 | 107 | 193 | 55.8 |
+| llmserve int8 weights | inf | 398.8 | 22420 | 45940 | 153.7 |
+| llama.cpp Q8_0 (-kvu) | 2.0 | 228.5 | 31 | 106 | 10.5 |
+| llama.cpp Q8_0 (-kvu) | inf | 295.9 | 27561 | 64046 | 188.5 |
 
 llama.cpp configuration sweep (offline, F32): fa-on 180 tok/s, np16-fa-on 176 tok/s, np16 178 tok/s, np32 184 tok/s, np64-unified 231 tok/s. _CPU: Intel(R) Xeon(R) Processor, 4 threads, fp32._
 

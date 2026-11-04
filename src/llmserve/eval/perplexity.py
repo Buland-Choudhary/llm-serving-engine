@@ -36,12 +36,14 @@ def wikitext_text(split: str = "test") -> str:
 
 @torch.inference_mode()
 def forward_logits(
-    model, ids: list[int], block_size: int = 16, kv_dtype: str = "auto"
+    model, ids: list[int], block_size: int = 16, kv_dtype: str = "auto", k_smooth=None
 ) -> torch.Tensor:
     """Logits for every position of one sequence (single prefill through the paged cache)."""
     n = len(ids)
     nb = -(-n // block_size)
     cache = KVCache(model.cfg, nb, block_size, next(model.parameters()).dtype, kv_dtype=kv_dtype)
+    if k_smooth is not None:
+        cache.set_k_smoothing(k_smooth, model.cfg.num_attention_heads)
     meta = AttentionMetadata.build([n], [n], [list(range(nb))], block_size)
     h = model(torch.tensor(ids), torch.arange(n), cache.layers, meta)
     return model.compute_logits(h)
@@ -54,6 +56,7 @@ def perplexity(
     window: int = 1024,
     max_tokens: int | None = None,
     kv_dtype: str = "auto",
+    k_smooth=None,
 ) -> dict:
     """Non-overlapping windows; each window's first token is not scored."""
     ids = token_ids[: max_tokens or len(token_ids)]
@@ -62,7 +65,7 @@ def perplexity(
         chunk = ids[s : s + window]
         if len(chunk) < 2:
             break
-        logits = forward_logits(model, chunk, kv_dtype=kv_dtype)
+        logits = forward_logits(model, chunk, kv_dtype=kv_dtype, k_smooth=k_smooth)
         lp = torch.log_softmax(logits[:-1], -1)
         tgt = torch.tensor(chunk[1:])
         nll -= lp.gather(1, tgt[:, None]).sum().item()
@@ -87,6 +90,7 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--window", type=int, default=1024)
     # int8 KV: every attention read (also within the prefill) sees quantized K/V
     ap.add_argument("--kv-cache-dtype", choices=["auto", "int8"], default="auto")
+    ap.add_argument("--kv-k-smooth", type=float, default=None, help="int8 KV key smoothing alpha")
     ap.add_argument("--threads", type=int, default=4)
     ap.add_argument("--out", default=None)
     args = ap.parse_args(argv)
@@ -106,13 +110,20 @@ def main(argv: list[str] | None = None) -> None:
     load_s = time.time() - t0
     ids = tok(wikitext_text("test"), add_special_tokens=False).input_ids
     t0 = time.time()
-    res = perplexity(model, ids, args.window, args.max_tokens, args.kv_cache_dtype)
+    k_smooth = None
+    if args.kv_cache_dtype == "int8" and args.kv_k_smooth is not None:
+        from llmserve.attention import CALIBRATION_TEXT, calibrate_k_smoothing
+
+        cal = tok(CALIBRATION_TEXT, add_special_tokens=False).input_ids
+        k_smooth = calibrate_k_smoothing(model, cal, args.kv_k_smooth)
+    res = perplexity(model, ids, args.window, args.max_tokens, args.kv_cache_dtype, k_smooth)
     res.update(
         model=args.model,
         quantization=args.quantization or "fp32",
         quantize_lm_head=args.quantize_lm_head,
         group_size=args.group_size,
         kv_cache_dtype=args.kv_cache_dtype,
+        kv_k_smooth=args.kv_k_smooth,
         weight_bytes=weight_bytes(model),
         load_s=load_s,
         eval_s=time.time() - t0,

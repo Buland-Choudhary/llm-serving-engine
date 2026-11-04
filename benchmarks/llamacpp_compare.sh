@@ -68,19 +68,19 @@ git -C "$LLAMACPP" log -1 --format='{"llama_cpp_commit": "%H", "date": "%cI"}' >
 run_system llmserve-fp32 "$RATES" .venv/bin/llmserve serve --model smollm2-135m --port $PORT \
   --threads 4 --max-num-seqs $NP
 # llama.cpp with fp32 weights and fp32 KV cache (same dtype as ours)
-run_system llamacpp-f32 "$RATES" "$LC_SERVER" -m "$GGUF_DIR/smollm2-135m-f32.gguf" \
+[ "${FULL:-0}" = 1 ] && run_system llamacpp-f32 "$RATES" "$LC_SERVER" -m "$GGUF_DIR/smollm2-135m-f32.gguf" \
   "${LC_ARGS[@]}" -ctk f32 -ctv f32
 # Extra, clearly different config: 8-bit weights on both sides (their Q8_0 vs our int8)
 run_system llmserve-int8 "inf 2.0" .venv/bin/llmserve serve --model smollm2-135m --port $PORT \
   --threads 4 --max-num-seqs $NP --quantization int8
-run_system llamacpp-q8_0 "inf 2.0" "$LC_SERVER" -m "$GGUF_DIR/smollm2-135m-q8_0.gguf" \
+[ "${FULL:-0}" = 1 ] && run_system llamacpp-q8_0 "inf 2.0" "$LC_SERVER" -m "$GGUF_DIR/smollm2-135m-q8_0.gguf" \
   "${LC_ARGS[@]}" -ctk f32 -ctv f32
 
 # Give llama.cpp its best shot: offline-throughput sweep over its main knobs (later flags
 # override the defaults in LC_ARGS). Results in results/llamacpp/tuning/.
 OUT=results/llamacpp/tuning
 mkdir -p "$OUT"
-for cfg in "fa-on:-fa on" "np16:-np 16 -c 16384" "np32:-np 32 -c 32768" \
+[ "${FULL:-0}" = 1 ] && for cfg in "fa-on:-fa on" "np16:-np 16 -c 16384" "np32:-np 32 -c 32768" \
   "np16-fa-on:-np 16 -c 16384 -fa on" "np64-unified:-kvu"; do
   # shellcheck disable=SC2086
   run_system "llamacpp-f32-${cfg%%:*}" inf "$LC_SERVER" -m "$GGUF_DIR/smollm2-135m-f32.gguf" \

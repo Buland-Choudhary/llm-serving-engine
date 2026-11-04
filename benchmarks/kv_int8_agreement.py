@@ -23,11 +23,14 @@ def main():
     ap.add_argument("--model", default="smollm2-135m")
     ap.add_argument("--num-requests", type=int, default=50)
     ap.add_argument("--output-len", type=int, default=128)
+    ap.add_argument("--kv-k-smooth", type=float, default=None, help="int8 key smoothing alpha")
     ap.add_argument("--out", default=None)
     args = ap.parse_args()
     outs = {}
     for dt in ("auto", "int8"):
-        llm = LLM(args.model, kv_cache_dtype=dt, kv_cache_memory_gb=1.0)
+        llm = LLM(
+            args.model, kv_cache_dtype=dt, kv_cache_memory_gb=1.0, kv_k_smooth=args.kv_k_smooth
+        )
         reqs = workloads.sharegpt(llm.engine.tokenizer, args.num_requests, 0, 512, 16)
         sp = SamplingParams(temperature=0, max_tokens=args.output_len, ignore_eos=True)
         res = llm.generate([r.prompt_token_ids for r in reqs], sp)
@@ -42,6 +45,7 @@ def main():
     L = args.output_len
     res = {
         "model": args.model,
+        "kv_k_smooth": args.kv_k_smooth,
         "num_requests": args.num_requests,
         "output_len": L,
         "identical_outputs": sum(p == L for p in prefix) / len(prefix),

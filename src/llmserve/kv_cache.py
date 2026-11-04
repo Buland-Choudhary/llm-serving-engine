@@ -56,6 +56,12 @@ class KVCache:
             per_token = 2 * cfg.num_hidden_layers * cfg.num_key_value_heads * (cfg.head_dim + 4)
         return max(1, mem_bytes // (per_token * block_size))
 
+    def set_k_smoothing(self, factors: list[torch.Tensor], num_q_heads: int) -> None:
+        """Install per-layer key smoothing factors (int8 KV only)."""
+        assert self.kv_dtype == "int8" and len(factors) == len(self.layers)
+        for (k, _), s in zip(self.layers, factors, strict=True):
+            k.set_smoothing(s, num_q_heads)
+
     def nbytes(self) -> int:
         if self.kv_dtype == "int8":
             return sum(k.nbytes() + v.nbytes() for k, v in self.layers)
