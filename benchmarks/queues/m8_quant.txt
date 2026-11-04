@@ -25,3 +25,4 @@
 .venv/bin/python benchmarks/lora_demo.py --out results/lora/qwen3-0.6b_multi_lora.json
 .venv/bin/llmserve bench --system engine --model smollm2-135m --num-requests 200 --compile --out results/m4/offline/smollm2-135m__engine-compile.json
 .venv/bin/llmserve bench --system engine --model smollm2-135m --num-requests 100 --rate 0.25 --slo-ttft-ms 2000 --slo-tpot-ms 250 --out results/m4/online/smollm2-135m__engine__rate0.25.json
+.venv/bin/python benchmarks/chunked_stall.py --out results/m5/chunked_stall.json
