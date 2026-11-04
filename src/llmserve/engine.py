@@ -86,6 +86,11 @@ class LLMEngine:
                 tokenizer = AutoTokenizer.from_pretrained(str(path))
         self.model = model
         if cfg.compile:
+            # Inductor freezing treats weights as constants and prepacks them for oneDNN itself,
+            # so compiled models start from plain nn.Linear layers (linear_backend="torch").
+            import torch._inductor.config as inductor_cfg
+
+            inductor_cfg.freezing = True
             for layer in model.layers:
                 layer.compile()
         self.tokenizer = tokenizer

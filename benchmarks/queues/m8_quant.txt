@@ -23,3 +23,4 @@
 .venv/bin/llmserve bench --system engine --model qwen3-0.6b --num-requests 100 --quantization int4 --out results/m8/speed/qwen3-0.6b__int4__offline.json
 .venv/bin/llmserve bench --system engine --model qwen3-0.6b --num-requests 12 --max-num-seqs 1 --max-output-len 96 --quantization int8 --quantize-lm-head --out results/m8/speed/qwen3-0.6b__int8-lmhead__bs1.json
 .venv/bin/python benchmarks/lora_demo.py --out results/lora/qwen3-0.6b_multi_lora.json
+.venv/bin/llmserve bench --system engine --model smollm2-135m --num-requests 200 --compile --out results/m4/offline/smollm2-135m__engine-compile.json

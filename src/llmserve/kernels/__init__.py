@@ -9,6 +9,8 @@ import functools
 import logging
 from pathlib import Path
 
+import torch
+
 log = logging.getLogger(__name__)
 _CSRC = Path(__file__).parent / "csrc"
 
@@ -35,7 +37,6 @@ def load_paged_attention():
 def _register_custom_op():
     """Expose the kernel as ``torch.ops.llmserve.paged_attention_decode`` so ``torch.compile``
     can trace around it (it becomes an opaque node instead of a graph break)."""
-    import torch
 
     @torch.library.custom_op("llmserve::paged_attention_decode", mutates_args=())
     def paged_attention_decode(
