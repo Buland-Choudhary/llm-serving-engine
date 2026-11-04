@@ -32,9 +32,15 @@ class ModelRunner:
             v[dst] = v[src]
 
     @torch.inference_mode()
-    def execute(self, sched: SchedulerOutput, sample_rows: list[int]) -> torch.Tensor:
-        """Run the model. ``sample_rows`` lists indices into ``sched.scheduled`` whose last new
-        token needs logits. Returns logits ``[len(sample_rows), vocab]``."""
+    def execute(
+        self,
+        sched: SchedulerOutput,
+        sample_rows: list[int],
+        num_logits: dict[int, int] | None = None,
+    ) -> torch.Tensor:
+        """Run the model. ``sample_rows`` lists indices into ``sched.scheduled`` that need logits.
+        By default that is the last new token; ``num_logits[i]`` asks for the last n positions
+        instead (speculative verification). Returns the logits rows in order."""
         self.copy_blocks(sched.block_copies)
         ids: list[int] = []
         pos: list[int] = []
@@ -44,6 +50,9 @@ class ModelRunner:
             seq, n = s.seq, s.num_new_tokens
             start = seq.num_computed_tokens
             toks = seq.token_ids()
+            spec = getattr(seq, "spec_tokens", None)
+            if spec:
+                toks = toks + spec
             ids.extend(toks[start : start + n])
             pos.extend(range(start, start + n))
             q_lens.append(n)
@@ -58,5 +67,9 @@ class ModelRunner:
         hidden = self.model(input_ids, positions, self.cache.layers, meta)
         if not sample_rows:
             return torch.empty(0, self.model.cfg.vocab_size)
-        sel = torch.tensor([last_idx[i] for i in sample_rows], device=self.device)
+        rows: list[int] = []
+        for i in sample_rows:
+            n = (num_logits or {}).get(i, 1)
+            rows.extend(range(last_idx[i] - n + 1, last_idx[i] + 1))
+        sel = torch.tensor(rows, device=self.device)
         return self.model.compute_logits(hidden[sel]).cpu()

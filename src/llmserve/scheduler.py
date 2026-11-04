@@ -84,6 +84,7 @@ class Scheduler:
         self.running.remove(seq)
         self.bm.free(seq)
         seq.num_computed_tokens = 0
+        seq.spec_tokens, seq.spec_probs = [], None
         seq.num_preemptions += 1
         seq.status = SeqStatus.WAITING
         self.waiting.appendleft(seq)
@@ -99,8 +100,10 @@ class Scheduler:
         i = 0
         while i < len(self.running) and budget > 0:
             seq = self.running[i]
-            remaining = seq.num_tokens - seq.num_computed_tokens
+            remaining = seq.num_tokens - seq.num_computed_tokens + len(seq.spec_tokens)
             n = min(remaining, budget) if self.cfg.enable_chunked_prefill else remaining
+            if seq.spec_tokens and n < remaining:
+                n = remaining  # never split a verification chunk; it is at most 1 + k tokens
             if n > budget and out.scheduled:
                 break
             while not self.bm.can_allocate(seq, n):

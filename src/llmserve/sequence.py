@@ -43,6 +43,8 @@ class Sequence:
         self.num_computed_tokens = 0
         self.num_cached_tokens = 0  # prompt tokens served from the prefix cache (stats)
         self.num_preemptions = 0
+        self.spec_tokens: list[int] = []  # proposed draft tokens awaiting verification
+        self.spec_probs = None  # their draft distributions (None = deterministic proposer)
         self.finish_reason: str | None = None
         self.stop_reason: str | int | None = None
         self.logprobs: list[float] = []
@@ -60,6 +62,7 @@ class Sequence:
 
     @property
     def num_tokens(self) -> int:
+        """Known tokens (prompt + accepted output); draft tokens are not counted."""
         return len(self.prompt_token_ids) + len(self.output_token_ids)
 
     @property

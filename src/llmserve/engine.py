@@ -35,6 +35,12 @@ class EngineConfig:
     num_threads: int | None = None
     linear_backend: str = "auto"  # auto | onednn | transposed | torch
     attention_backend: str = "auto"  # auto | cpp | torch
+    # speculative decoding: None, "ngram", or "draft" (with spec_draft_model)
+    speculative: str | None = None
+    num_speculative_tokens: int = 4
+    spec_draft_model: str | None = None
+    spec_draft_linear_backend: str = "transposed"  # drafts run 1 row/seq; oneDNN is slower there
+    ngram_max_n: int = 4
     extra: dict = field(default_factory=dict)
 
     def scheduler_config(self) -> SchedulerConfig:
@@ -95,6 +101,66 @@ class LLMEngine:
             self.eos_ids.add(tokenizer.eos_token_id)
         self.last_step = StepStats()
         self.total_steps = 0
+        self.proposer = self._make_proposer(dtype)
+        self.spec_stats = {"verify_seqs": 0, "proposed": 0, "accepted": 0, "emitted": 0}
+
+    def _make_proposer(self, dtype):
+        cfg = self.cfg
+        if cfg.speculative is None:
+            return None
+        from llmserve.spec_decode.proposers import DraftModelProposer, NgramProposer
+
+        if cfg.speculative == "ngram":
+            return NgramProposer(cfg.num_speculative_tokens, max_n=cfg.ngram_max_n)
+        if cfg.speculative == "draft":
+            if not cfg.spec_draft_model:
+                raise ValueError("speculative='draft' needs spec_draft_model")
+            draft = load_model(
+                resolve_model_path(cfg.spec_draft_model),
+                dtype=dtype,
+                device=cfg.device,
+                max_positions=cfg.max_model_len,
+                linear_backend=cfg.spec_draft_linear_backend,
+            )
+            if draft.cfg.vocab_size > self.model_cfg.vocab_size:
+                raise ValueError("draft vocabulary is larger than the target's")
+            return DraftModelProposer(
+                draft, cfg.num_speculative_tokens, self.block_manager.num_blocks, cfg.block_size
+            )
+        raise ValueError(f"unknown speculative mode {cfg.speculative!r}")
+
+    def _spec_k(self, seq: Sequence) -> int:
+        """How many draft tokens this sequence can take this step (0 = no speculation)."""
+        p = seq.params
+        if (
+            not seq.request.forked
+            or seq.num_computed_tokens != seq.num_tokens - 1
+            or p.logprobs is not None
+            or p.presence_penalty
+            or p.frequency_penalty
+            or p.repetition_penalty != 1.0
+            or len(seq.output_token_ids) < p.min_tokens
+        ):
+            return 0
+        room = min(
+            p.max_tokens - len(seq.output_token_ids) - 1,
+            self.cfg.max_model_len - seq.num_tokens - 1,
+        )
+        return max(0, min(self.cfg.num_speculative_tokens, room))
+
+    def _propose(self) -> None:
+        seqs, ks = [], []
+        for seq in self.scheduler.running:
+            seq.spec_tokens, seq.spec_probs = [], None
+            k = self._spec_k(seq)
+            if k > 0:
+                seqs.append(seq)
+                ks.append(k)
+        if not seqs:
+            return
+        for seq, prop in zip(seqs, self.proposer.propose(seqs, ks), strict=True):
+            seq.spec_tokens = prop.tokens
+            seq.spec_probs = prop.probs
 
     # ------------------------------------------------------------------ intake
     def add_request(
@@ -146,6 +212,8 @@ class LLMEngine:
             if not s.is_finished:
                 s.finish_reason = "abort"
                 self.scheduler.finish(s)
+                if self.proposer is not None:
+                    self.proposer.on_finish(s)
 
     def has_unfinished_requests(self) -> bool:
         return self.scheduler.has_unfinished()
@@ -157,7 +225,12 @@ class LLMEngine:
     # ------------------------------------------------------------------ step
     def step(self) -> list[RequestOutput]:
         t0 = time.monotonic()
+        if self.proposer is not None:
+            self._propose()
         sched = self.scheduler.schedule()
+        if self.proposer is not None:
+            for seq in sched.preempted:
+                self.proposer.on_preempt(seq)
         t1 = time.monotonic()
         stats = StepStats(num_preempted=len(sched.preempted), t_schedule=t1 - t0)
         if sched.is_empty:
@@ -165,24 +238,47 @@ class LLMEngine:
             return []
 
         # Which sequences reach the end of their known tokens this step (and so get a new token)?
-        sample_rows = [
-            i
-            for i, s in enumerate(sched.scheduled)
-            if s.seq.num_computed_tokens + s.num_new_tokens == s.seq.num_tokens
-        ]
-        logits = self.runner.execute(sched, sample_rows)
+        sample_rows, num_logits, spec_rows = [], {}, []
+        for i, s in enumerate(sched.scheduled):
+            seq = s.seq
+            if seq.num_computed_tokens + s.num_new_tokens == seq.num_tokens + len(seq.spec_tokens):
+                if seq.spec_tokens:
+                    num_logits[i] = 1 + len(seq.spec_tokens)
+                    spec_rows.append(i)
+                else:
+                    sample_rows.append(i)
+        all_rows = sorted(sample_rows + spec_rows)
+        logits_all = self.runner.execute(sched, all_rows, num_logits)
         t2 = time.monotonic()
         stats.t_forward = t2 - t1
+        # split the returned rows back per scheduled entry
+        offsets, o = {}, 0
+        for i in all_rows:
+            offsets[i] = o
+            o += num_logits.get(i, 1)
+        logits = (
+            logits_all[torch.tensor([offsets[i] for i in sample_rows])]
+            if sample_rows
+            else logits_all[:0]
+        )
         for s in sched.scheduled:
             s.seq.num_computed_tokens += s.num_new_tokens
-            self.block_manager.cache_full_blocks(s.seq)
-            if s.num_new_tokens == 1 and s.seq.output_token_ids:
+            if s.seq.spec_tokens:
+                stats.num_decode_tokens += s.num_new_tokens
+            elif s.num_new_tokens == 1 and s.seq.output_token_ids:
                 stats.num_decode_tokens += 1
             else:
                 stats.num_prefill_tokens += s.num_new_tokens
 
         now = time.monotonic()
         touched: dict[str, Request] = {}
+        for i in spec_rows:
+            seq = sched.scheduled[i].seq
+            self._verify(seq, logits_all[offsets[i] : offsets[i] + num_logits[i]], now)
+            touched[seq.request.request_id] = seq.request
+        for s in sched.scheduled:
+            if not s.seq.is_finished:
+                self.block_manager.cache_full_blocks(s.seq)
         if sample_rows:
             seqs = [sched.scheduled[i].seq for i in sample_rows]
             # Requests with n > 1 sample n first tokens from the same prompt logits, then fork.
@@ -228,6 +324,27 @@ class LLMEngine:
                 req.metrics.finished_time = now
                 self.requests.pop(req.request_id, None)
         return outputs
+
+    def _verify(self, seq: Sequence, logits: torch.Tensor, now: float) -> None:
+        from llmserve.spec_decode.rejection import rejection_sample
+
+        drafts = seq.spec_tokens
+        tokens, n_acc = rejection_sample(logits, drafts, seq.spec_probs, seq.params, seq.generator)
+        # Valid KV: the previously sampled token + the accepted drafts. Rejected slots are left
+        # in place and overwritten later; they are past num_computed_tokens so never attended.
+        seq.num_computed_tokens -= len(drafts) - n_acc
+        seq.spec_tokens, seq.spec_probs = [], None
+        st = self.spec_stats
+        st["verify_seqs"] += 1
+        st["proposed"] += len(drafts)
+        st["accepted"] += n_acc
+        for t in tokens:
+            st["emitted"] += 1
+            self._append_token(seq, t, None, None, now)
+            if seq.is_finished:
+                break
+        if not seq.is_finished and hasattr(self.proposer, "rollback"):
+            self.proposer.rollback(seq)
 
     def _fork(self, parent: Sequence, index: int) -> Sequence:
         child = Sequence(next(self._seq_ids), parent.request, parent.prompt_token_ids, index=index)
@@ -281,6 +398,8 @@ class LLMEngine:
         if reason is not None:
             seq.finish_reason = reason
             self.scheduler.finish(seq)
+            if self.proposer is not None:
+                self.proposer.on_finish(seq)
 
     def _make_output(self, req: Request) -> RequestOutput:
         outs = []
@@ -316,6 +435,7 @@ class LLMEngine:
             "num_preemptions": self.scheduler.num_preemptions,
             "prefix_cache_queries": bm.prefix_queries,
             "prefix_cache_hits": bm.prefix_hits,
+            **({f"spec_{k}": v for k, v in self.spec_stats.items()} if self.proposer else {}),
         }
 
 
