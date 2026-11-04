@@ -1,5 +1,7 @@
 # llm-serving-engine
 
+[![CI](https://github.com/Buland-Choudhary/llm-serving-engine/actions/workflows/ci.yml/badge.svg)](https://github.com/Buland-Choudhary/llm-serving-engine/actions/workflows/ci.yml)
+
 **An LLM inference and serving engine written from scratch in PyTorch + C++.** Paged KV cache,
 continuous batching, chunked prefill, prefix caching, speculative decoding, int8/int4
 quantization with custom kernels, structured (JSON-schema) output, multi-LoRA serving, and an
