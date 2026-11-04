@@ -34,14 +34,7 @@ class Attention(nn.Module):
             self.k_norm = RMSNorm(self.head_dim, cfg.rms_norm_eps)
         self.scale = self.head_dim**-0.5
 
-    def forward(
-        self,
-        x: torch.Tensor,
-        rope_cs: tuple[torch.Tensor, torch.Tensor],
-        k_cache: torch.Tensor,
-        v_cache: torch.Tensor,
-        meta: AttentionMetadata,
-    ) -> torch.Tensor:
+    def qkv(self, x: torch.Tensor, cos: torch.Tensor, sin: torch.Tensor):
         T = x.shape[0]
         q, k, v = self.qkv_proj(x).split([self.q_size, self.kv_size, self.kv_size], dim=-1)
         q = q.view(T, self.n_heads, self.head_dim)
@@ -50,9 +43,20 @@ class Attention(nn.Module):
         if self.qk_norm:
             q = self.q_norm(q)
             k = self.k_norm(k)
-        q, k = apply_rope(q, k, *rope_cs)
+        q, k = apply_rope(q, k, cos, sin)
+        return q, k, v
+
+    def forward(
+        self,
+        x: torch.Tensor,
+        rope_cs: tuple[torch.Tensor, torch.Tensor],
+        k_cache: torch.Tensor,
+        v_cache: torch.Tensor,
+        meta: AttentionMetadata,
+    ) -> torch.Tensor:
+        q, k, v = self.qkv(x, *rope_cs)
         o = paged_attention(q, k, v, k_cache, v_cache, meta, self.scale)
-        return self.o_proj(o.reshape(T, self.q_size))
+        return self.o_proj(o.reshape(x.shape[0], self.q_size))
 
 
 class MLP(nn.Module):
@@ -75,9 +79,28 @@ class DecoderLayer(nn.Module):
         self.post_attention_layernorm = RMSNorm(cfg.hidden_size, cfg.rms_norm_eps)
         self.mlp = MLP(cfg)
 
-    def forward(self, x, rope_cs, k_cache, v_cache, meta):
-        x = x + self.self_attn(self.input_layernorm(x), rope_cs, k_cache, v_cache, meta)
+    # The layer is split at attention: the two halves are pure tensor code that
+    # ``torch.compile`` can fuse; attention (paged, data-dependent) runs in between.
+    def pre_attn(self, x, cos, sin):
+        return self.self_attn.qkv(self.input_layernorm(x), cos, sin)
+
+    def post_attn(self, x, o):
+        x = x + self.self_attn.o_proj(o)
         return x + self.mlp(self.post_attention_layernorm(x))
+
+    def forward(self, x, rope_cs, k_cache, v_cache, meta):
+        q, k, v = self._pre(x, *rope_cs)
+        o = paged_attention(q, k, v, k_cache, v_cache, meta, self.self_attn.scale)
+        return self._post(x, o.reshape(x.shape[0], self.self_attn.q_size))
+
+    _pre = pre_attn
+    _post = post_attn
+
+    def compile(self, **kw) -> None:
+        import torch
+
+        self._pre = torch.compile(self.pre_attn, dynamic=True, **kw)
+        self._post = torch.compile(self.post_attn, dynamic=True, **kw)
 
 
 class CausalLM(nn.Module):

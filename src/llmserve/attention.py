@@ -160,10 +160,10 @@ def paged_attention(
         out[p.q_start : p.q_start + p.q_len] = oi.squeeze(0).transpose(0, 1)
 
     if meta.decode_block_tables is not None:
-        from llmserve.kernels import load_paged_attention
+        from llmserve.kernels import load_paged_attention, paged_attention_op
 
         if not meta.prefills:  # pure decode batch: every token is a decode token, in order
-            return load_paged_attention().paged_attention_decode(
+            return paged_attention_op()(
                 q.contiguous(),
                 k_cache,
                 v_cache,

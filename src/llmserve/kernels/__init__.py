@@ -30,3 +30,34 @@ def load_paged_attention():
     except Exception as e:  # pragma: no cover - depends on the toolchain
         log.warning("paged attention kernel unavailable, using PyTorch fallback: %s", e)
         return None
+
+
+def _register_custom_op():
+    """Expose the kernel as ``torch.ops.llmserve.paged_attention_decode`` so ``torch.compile``
+    can trace around it (it becomes an opaque node instead of a graph break)."""
+    import torch
+
+    @torch.library.custom_op("llmserve::paged_attention_decode", mutates_args=())
+    def paged_attention_decode(
+        q: torch.Tensor,
+        k_cache: torch.Tensor,
+        v_cache: torch.Tensor,
+        block_tables: torch.Tensor,
+        context_lens: torch.Tensor,
+        block_size: int,
+        scale: float,
+    ) -> torch.Tensor:
+        return load_paged_attention().paged_attention_decode(
+            q.contiguous(), k_cache, v_cache, block_tables, context_lens, block_size, scale
+        )
+
+    @paged_attention_decode.register_fake
+    def _(q, k_cache, v_cache, block_tables, context_lens, block_size, scale):
+        return torch.empty_like(q)
+
+    return paged_attention_decode
+
+
+@functools.cache
+def paged_attention_op():
+    return _register_custom_op()
