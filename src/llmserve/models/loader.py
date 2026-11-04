@@ -91,7 +91,14 @@ def load_model(
     device: str | torch.device = "cpu",
     max_positions: int | None = None,
     linear_backend: str = "auto",
+    quantization: str | None = None,
+    quantize_lm_head: bool = False,
+    group_size: int = 64,
+    calib_token_ids: list[list[int]] | None = None,
 ) -> CausalLM:
+    """Load a checkpoint. ``quantization`` (int8 | int4 | int4-awq) replaces the linear layers
+    with weight-only quantized ones; int4-awq calibrates on ``calib_token_ids`` (default: a
+    slice of WikiText-2 *train*)."""
     path = resolve_model_path(str(name_or_path))
     cfg = ModelConfig.from_pretrained(path)
     with torch.device("meta"):
@@ -113,6 +120,20 @@ def load_model(
     model.rope.sin = model.rope.sin.float()
     model.eval()
     model.requires_grad_(False)
+    if quantization:
+        from llmserve.quant import collect_linear_inputs, quantize_model
+
+        acts = None
+        if quantization == "int4-awq":
+            from llmserve.eval.perplexity import forward_logits
+
+            if calib_token_ids is None:
+                calib_token_ids = _default_calibration(path)
+            acts = collect_linear_inputs(
+                model, lambda: [forward_logits(model, c) for c in calib_token_ids]
+            )
+        quantize_model(model, quantization, group_size, quantize_lm_head, acts)
+        linear_backend = "torch"  # remaining fp32 linears (e.g. lm_head) stay as nn.Linear
     if linear_backend == "auto":
         on_cpu = torch.device(device).type == "cpu"
         linear_backend = (
@@ -127,3 +148,13 @@ def load_model(
         swap_linears(model, factory)
     model.linear_backend = linear_backend
     return model
+
+
+def _default_calibration(path: Path, n_seqs: int = 8, seq_len: int = 512) -> list[list[int]]:
+    from transformers import AutoTokenizer
+
+    from llmserve.eval.perplexity import wikitext_text
+
+    tok = AutoTokenizer.from_pretrained(str(path))
+    ids = tok(wikitext_text("train")[:400_000], add_special_tokens=False).input_ids
+    return [ids[i * seq_len : (i + 1) * seq_len] for i in range(n_seqs)]

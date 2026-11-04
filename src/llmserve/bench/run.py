@@ -44,6 +44,8 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--block-size", type=int, default=16)
     ap.add_argument("--linear-backend", default="auto")
     ap.add_argument("--attention-backend", default="auto")
+    ap.add_argument("--quantization", default=None, choices=["int8", "int4", "int4-awq"])
+    ap.add_argument("--quantize-lm-head", action="store_true")
     ap.add_argument("--speculative", choices=["ngram", "draft"], default=None)
     ap.add_argument("--num-spec-tokens", type=int, default=4)
     ap.add_argument("--draft-model", default=None)
@@ -105,6 +107,8 @@ def main(argv: list[str] | None = None) -> None:
             max_model_len=max(2048, args.max_prompt_len + args.max_output_len + args.prefix_len),
             linear_backend=args.linear_backend,
             attention_backend=args.attention_backend,
+            quantization=args.quantization,
+            quantize_lm_head=args.quantize_lm_head,
             speculative=args.speculative,
             num_speculative_tokens=args.num_spec_tokens,
             spec_draft_model=args.draft_model,

@@ -30,7 +30,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.3", "ruff>=0.12", "openai>=1.60"]
+dev = ["pytest>=8.3", "ruff>=0.12", "openai>=1.60", "pyarrow>=17"]
 
 [project.scripts]
 llmserve = "llmserve.cli:main"

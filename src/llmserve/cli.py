@@ -9,6 +9,7 @@ COMMANDS = {
     "bench": ("llmserve.bench.run", "run a benchmark"),
     "serve": ("llmserve.server.app", "start the OpenAI-compatible HTTP server"),
     "loadtest": ("llmserve.bench.http_client", "load-test an OpenAI-compatible server"),
+    "ppl": ("llmserve.eval.perplexity", "WikiText-2 perplexity (quantization quality)"),
     "generate": ("llmserve.generate_cli", "generate text from the command line"),
 }
 

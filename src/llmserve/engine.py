@@ -35,6 +35,8 @@ class EngineConfig:
     num_threads: int | None = None
     linear_backend: str = "auto"  # auto | onednn | transposed | torch
     attention_backend: str = "auto"  # auto | cpp | torch
+    quantization: str | None = None  # None | int8 | int4 | int4-awq (weight-only)
+    quantize_lm_head: bool = False
     # speculative decoding: None, "ngram", or "draft" (with spec_draft_model)
     speculative: str | None = None
     num_speculative_tokens: int = 4
