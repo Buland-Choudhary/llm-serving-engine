@@ -90,7 +90,10 @@ def build_app(engine: LLMEngine, model_name: str, default_max_tokens: int = 256)
     def models():
         return {
             "object": "list",
-            "data": [{"id": model_name, "object": "model", "owned_by": "llmserve", "created": 0}],
+            "data": [
+                {"id": m, "object": "model", "owned_by": "llmserve", "created": 0}
+                for m in [model_name, *sorted(lora_names)]
+            ],
         }
 
     @app.get("/metrics")
@@ -140,8 +143,13 @@ def build_app(engine: LLMEngine, model_name: str, default_max_tokens: int = 256)
             u["prompt_tokens_details"] = {"cached_tokens": out.num_cached_tokens}
         return u
 
-    async def _run(prompt_ids, sp, rid) -> AsyncIterator[RequestOutput]:
-        async for o in aengine.generate(prompt_ids, sp, rid):
+    lora_names = set(engine.lora.slots) if engine.lora is not None else set()
+
+    def _lora_for(model: str | None) -> str | None:
+        return model if model in lora_names else None
+
+    async def _run(prompt_ids, sp, rid, lora=None) -> AsyncIterator[RequestOutput]:
+        async for o in aengine.generate(prompt_ids, sp, rid, lora):
             yield o
 
     # ------------------------------------------------------------------ completions
@@ -164,7 +172,7 @@ def build_app(engine: LLMEngine, model_name: str, default_max_tokens: int = 256)
         rid = f"cmpl-{uuid.uuid4().hex[:24]}"
         created = int(time.time())
         streamer = _TextStreamer(req.n, sp.stop)
-        gen = _run(ids, sp, rid)
+        gen = _run(ids, sp, rid, _lora_for(req.model))
 
         if req.stream:
             include_usage = bool(req.stream_options and req.stream_options.include_usage)
@@ -259,7 +267,7 @@ def build_app(engine: LLMEngine, model_name: str, default_max_tokens: int = 256)
         rid = f"chatcmpl-{uuid.uuid4().hex[:24]}"
         created = int(time.time())
         streamer = _TextStreamer(req.n, sp.stop)
-        gen = _run(ids, sp, rid)
+        gen = _run(ids, sp, rid, _lora_for(req.model))
 
         if req.stream:
             include_usage = bool(req.stream_options and req.stream_options.include_usage)
@@ -357,6 +365,10 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--no-prefix-caching", action="store_true")
     ap.add_argument("--default-max-tokens", type=int, default=256)
     ap.add_argument("--threads", type=int, default=None)
+    ap.add_argument("--lora", action="append", default=[], help="name=path of a PEFT adapter")
+    ap.add_argument("--quantization", default=None, choices=["int8", "int4", "int4-awq"])
+    ap.add_argument("--speculative", default=None, choices=["ngram", "draft"])
+    ap.add_argument("--draft-model", default=None)
     args = ap.parse_args(argv)
     import uvicorn
 
@@ -370,8 +382,14 @@ def main(argv: list[str] | None = None) -> None:
             enable_chunked_prefill=not args.no_chunked_prefill,
             enable_prefix_caching=not args.no_prefix_caching,
             num_threads=args.threads,
+            quantization=args.quantization,
+            speculative=args.speculative,
+            spec_draft_model=args.draft_model,
         )
     )
+    for spec in args.lora:
+        name, _, path = spec.partition("=")
+        engine.load_lora(name, path)
     app = build_app(engine, args.served_model_name or args.model, args.default_max_tokens)
     uvicorn.run(app, host=args.host, port=args.port, log_level="info")
 

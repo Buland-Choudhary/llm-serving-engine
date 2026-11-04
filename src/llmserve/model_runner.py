@@ -6,6 +6,7 @@ import torch
 
 from llmserve.attention import AttentionMetadata, resolve_backend
 from llmserve.kv_cache import KVCache
+from llmserve.lora import set_batch_adapters
 from llmserve.models.transformer import CausalLM
 from llmserve.scheduler import SchedulerOutput
 
@@ -46,6 +47,7 @@ class ModelRunner:
         pos: list[int] = []
         q_lens, ctx_lens, tables = [], [], []
         last_idx: list[int] = []
+        token_slots: list[int] = []
         for s in sched.scheduled:
             seq, n = s.seq, s.num_new_tokens
             start = seq.num_computed_tokens
@@ -59,12 +61,18 @@ class ModelRunner:
             ctx_lens.append(start + n)
             tables.append(seq.block_table)
             last_idx.append(len(ids) - 1)
+            req = getattr(seq, "request", None)
+            token_slots.extend([req.lora_slot if req is not None else 0] * n)
         meta = AttentionMetadata.build(
             q_lens, ctx_lens, tables, self.block_size, self.device, self.attention_backend
         )
         input_ids = torch.tensor(ids, dtype=torch.long, device=self.device)
         positions = torch.tensor(pos, dtype=torch.long, device=self.device)
-        hidden = self.model(input_ids, positions, self.cache.layers, meta)
+        set_batch_adapters(token_slots)
+        try:
+            hidden = self.model(input_ids, positions, self.cache.layers, meta)
+        finally:
+            set_batch_adapters(None)
         if not sample_rows:
             return torch.empty(0, self.model.cfg.vocab_size)
         rows: list[int] = []

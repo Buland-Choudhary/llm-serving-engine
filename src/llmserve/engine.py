@@ -104,6 +104,7 @@ class LLMEngine:
         self.last_step = StepStats()
         self.total_steps = 0
         self._guide_factory = None
+        self.lora = None
         self.proposer = self._make_proposer(dtype)
         self.spec_stats = {"verify_seqs": 0, "proposed": 0, "accepted": 0, "emitted": 0}
 
@@ -144,6 +145,7 @@ class LLMEngine:
             or p.repetition_penalty != 1.0
             or len(seq.output_token_ids) < p.min_tokens
             or seq.guide is not None
+            or seq.request.lora_slot
         ):
             return 0
         room = min(
@@ -173,6 +175,7 @@ class LLMEngine:
         params: SamplingParams | None = None,
         request_id: str | None = None,
         arrival_time: float | None = None,
+        lora: str | None = None,
     ) -> str:
         params = params or SamplingParams()
         if isinstance(prompt, str):
@@ -197,6 +200,11 @@ class LLMEngine:
         if rid in self.requests:
             raise ValueError(f"duplicate request id {rid}")
         req = Request(rid, text, ids, params, arrival_time)
+        if lora is not None:
+            if self.lora is None:
+                raise ValueError(f"unknown LoRA adapter {lora!r}; none loaded")
+            req.lora_slot = self.lora.slot(lora)
+            req.lora_name = lora
         seq = Sequence(next(self._seq_ids), req, ids, index=0)
         pattern = params.guided_pattern
         if pattern is not None:
@@ -207,6 +215,14 @@ class LLMEngine:
         self.requests[rid] = req
         self.scheduler.add(seq)
         return rid
+
+    def load_lora(self, name: str, path: str) -> None:
+        """Register a PEFT LoRA adapter; requests select it with ``lora=name``."""
+        from llmserve.lora import LoRAManager
+
+        if self.lora is None:
+            self.lora = LoRAManager(self.model)
+        self.lora.load(name, path)
 
     def _guides(self):
         if self._guide_factory is None:

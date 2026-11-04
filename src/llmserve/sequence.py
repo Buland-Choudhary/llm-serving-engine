@@ -115,6 +115,8 @@ class Request:
         self.seqs: list[Sequence] = []
         self.metrics = RequestMetrics(arrival_time or time.monotonic())
         self.forked = params.n == 1  # n > 1 requests fork after their prompt is processed
+        self.lora_name: str | None = None
+        self.lora_slot = 0
 
     @property
     def is_finished(self) -> bool:

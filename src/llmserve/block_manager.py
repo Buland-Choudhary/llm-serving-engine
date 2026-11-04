@@ -124,7 +124,9 @@ class BlockManager:
         n_full = upto_tokens // bs
         while len(seq.block_hashes) < n_full:
             i = len(seq.block_hashes)
-            parent = seq.block_hashes[-1] if seq.block_hashes else None
+            # The first block is seeded with the LoRA adapter (if any): same tokens under a
+            # different adapter produce different KV and must not share cache entries.
+            parent = seq.block_hashes[-1] if seq.block_hashes else seq.request.lora_name
             toks = tuple(seq.token_at(j) for j in range(i * bs, (i + 1) * bs))
             seq.block_hashes.append(hash_block(parent, toks))
 

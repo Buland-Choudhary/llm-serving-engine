@@ -31,6 +31,7 @@ class _Submit:
     arrival_time: float
     out_q: asyncio.Queue
     loop: asyncio.AbstractEventLoop
+    lora: str | None = None
 
 
 @dataclass
@@ -66,7 +67,7 @@ class AsyncEngine:
             if isinstance(msg, _Submit):
                 try:
                     self.engine.add_request(
-                        msg.prompt_token_ids, msg.params, msg.request_id, msg.arrival_time
+                        msg.prompt_token_ids, msg.params, msg.request_id, msg.arrival_time, msg.lora
                     )
                     self._streams[msg.request_id] = msg
                 except Exception as e:  # invalid request: report to its stream
@@ -111,13 +112,19 @@ class AsyncEngine:
         self._wake.set()
 
     async def generate(
-        self, prompt_token_ids: list[int], params: SamplingParams, request_id: str
+        self,
+        prompt_token_ids: list[int],
+        params: SamplingParams,
+        request_id: str,
+        lora: str | None = None,
     ) -> AsyncIterator[RequestOutput]:
         if not self.is_healthy:
             raise EngineDeadError("engine is not running")
         loop = asyncio.get_running_loop()
         q: asyncio.Queue = asyncio.Queue()
-        self._inbox.put(_Submit(request_id, prompt_token_ids, params, time.monotonic(), q, loop))
+        self._inbox.put(
+            _Submit(request_id, prompt_token_ids, params, time.monotonic(), q, loop, lora)
+        )
         self._wake.set()
         finished = False
         try:
