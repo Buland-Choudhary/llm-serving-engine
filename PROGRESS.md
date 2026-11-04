@@ -68,3 +68,6 @@
 - Web console at `/` (streaming chat + live engine stats) and `/stats`.
 - Bug caught by the real-model check: registering the custom op inside a function under
   `from __future__ import annotations` broke schema inference (torch not in module scope).
+- Discarded `results/m4/online/smollm2-135m__engine__rate0.25.json` (first run): it overlapped the
+  background download of SmolLM2-1.7B (00:14-00:15 UTC) and showed a cluster of 2-6 s TTFTs for
+  short prompts at t = 54-76 s. Re-queued at the end of `m8_quant`.
