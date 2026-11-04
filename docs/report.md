@@ -79,7 +79,19 @@ and showed a cluster of 2-6 s TTFTs at a light load. It was re-run on the same C
 
 ## 4. Chunked prefill and prefix caching
 
-**Chunked prefill.** _CPU: Xeon 2.8 GHz._ TBD (re-run in progress after a scheduler fix).
+**Chunked prefill.** _CPU: Xeon 2.8 GHz._ The clean test: 8 streams are decoding when a
+2048-token prompt arrives (token budget 256).
+
+| mode | worst gap in running streams | stream gap p99 | long prompt TTFT |
+|---|---:|---:|---:|
+| no chunking | 5.77 s | 146 ms | 5.65 s |
+| chunked | **0.70 s** | 580 ms | 4.06 s |
+
+Without chunking every stream freezes for the whole 2048-token prefill; chunking bounds the
+freeze to one 256-token chunk (8x shorter worst case) at the cost of more frequent small pauses
+(higher p99). Under saturating load with many 1024-token prompts (0.5-1 req/s, see
+`results/README.md`) the two modes perform about the same: on a CPU, prefill is compute-bound and
+the queue dominates. Chunked prefill buys bounded stalls, not throughput.
 
 The first version of the non-chunked scheduler starved long prompts: a prompt bigger than the
 token budget only ran once the running batch had drained (13.1 s TTFT in the stall test). It now

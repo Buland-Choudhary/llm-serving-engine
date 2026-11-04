@@ -18,6 +18,7 @@ table in [`results/README.md`](results/README.md)).
 |---|---|
 | **Throughput vs HF transformers** (SmolLM2-135M, 200 ShareGPT requests) | **274 vs 19 tok/s (14x)** one-request-at-a-time; **6x** vs HF static batching |
 | **Serving under load** (Poisson arrivals, 1.5 req/s) | **99%** of requests meet a 2 s TTFT / 250 ms TPOT SLO (TTFT p99 0.89 s) vs **1%** for HF static batching (TTFT p99 179 s) |
+| **Chunked prefill** (2048-token prompt arrives while 8 streams decode) | worst decode stall **5.8 s -> 0.7 s** |
 | **Prefix caching** (shared 1024-token system prompt) | TTFT p50 **0.26 s vs 31.8 s** without it; **2.8x** throughput (SmolLM2-135M), **4x** (Qwen3-0.6B) |
 | **Speculative decoding** (SmolLM2-1.7B, single stream) | **2.9x** faster with n-gram lookup on a rewrite task (91% acceptance), **1.4x** with a 135M draft model on chat; correctly *slower* (0.85-0.91x) at batch 8 |
 | **Custom C++ kernels** | paged attention **2.3x** end-to-end throughput over gather + SDPA; int8 GEMV **3x** faster than fp32 per layer at batch 1, where PyTorch's int8 kernel is 3x *slower* |
