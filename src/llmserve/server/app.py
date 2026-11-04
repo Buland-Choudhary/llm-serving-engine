@@ -7,6 +7,7 @@ Endpoints: ``POST /v1/completions``, ``POST /v1/chat/completions``, ``GET /v1/mo
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import time
 import uuid
@@ -69,13 +70,15 @@ def build_app(engine: LLMEngine, model_name: str, default_max_tokens: int = 256)
     metrics = ServerMetrics(model_name)
     aengine = AsyncEngine(engine, on_step=metrics.observe_step, on_finish=metrics.observe_finish)
     tok = engine.tokenizer
-    app = FastAPI(title="llmserve", version="0.1.0")
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_app):
+        yield
+        aengine.shutdown()
+
+    app = FastAPI(title="llmserve", version="0.1.0", lifespan=lifespan)
     app.state.async_engine = aengine
     app.state.metrics = metrics
-
-    @app.on_event("shutdown")
-    def _shutdown() -> None:
-        aengine.shutdown()
 
     @app.get("/health")
     def health():

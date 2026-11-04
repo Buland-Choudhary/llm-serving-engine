@@ -65,20 +65,20 @@ Tier 1 (core engine + API) is finished and tagged `v1.0` before Tier 2 starts.
   - [x] `n > 1` parallel sampling sharing prompt blocks (ref-counted, copy-on-write on the last block)
   - [x] offline `LLM.generate()` API; batch-invariance tests (same output alone vs in a batch)
 - **M4: benchmarks v1**
-  - [ ] workloads: ShareGPT-style length distribution (sampled subset), fixed-length synthetic, shared-prefix
-  - [ ] baselines: HF transformers `generate` one request at a time, and static batching (padded, bs=8/16)
+  - [x] workloads: ShareGPT-style length distribution (sampled subset), fixed-length synthetic, shared-prefix
+  - [x] baselines: HF transformers `generate` one request at a time, and static batching (padded, bs=8/16)
   - [ ] offline throughput; online serving with Poisson arrivals: TTFT, TPOT, E2E p50/p90/p99, goodput under an SLO
-  - [ ] every result JSON records git SHA, CPU model, torch version, threads, model, config, seed
+  - [x] every result JSON records git SHA, CPU model, torch version, threads, model, config, seed
   - [ ] plots; first headline numbers in README
 - **M5: chunked prefill + prefix caching**
   - [ ] chunked prefill mixed with decodes under the token budget (decode-first scheduling)
   - [ ] automatic prefix caching: hash chain over full blocks, cache hits skip prefill, LRU eviction of free cached blocks
   - [ ] benchmarks: TTFT/ITL under mixed long/short load (chunked vs not); shared-system-prompt and multi-turn workloads (cache on vs off)
 - **M6: OpenAI-compatible server**
-  - [ ] FastAPI `/v1/completions`, `/v1/chat/completions` (chat templates), `/v1/models`, `/health`
-  - [ ] SSE streaming, async engine loop in a background thread, cancellation on client disconnect
-  - [ ] Prometheus `/metrics` (TTFT, TPOT, queue depth, KV-cache usage, prefix-cache hit rate)
-  - [ ] tests with the official `openai` Python client; HTTP load-test client; Dockerfile
+  - [x] FastAPI `/v1/completions`, `/v1/chat/completions` (chat templates), `/v1/models`, `/health`
+  - [x] SSE streaming, async engine loop in a background thread, cancellation on client disconnect
+  - [x] Prometheus `/metrics` (TTFT, TPOT, queue depth, KV-cache usage, prefix-cache hit rate)
+  - [x] tests with the official `openai` Python client; HTTP load-test client; Dockerfile
   - [ ] tag `v1.0`
 
 ### Tier 2

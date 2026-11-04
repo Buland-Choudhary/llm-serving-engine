@@ -1,8 +1,9 @@
 # Progress log
 
 ## Current status
-- **Milestone:** M0-M3 core code done (model, paged KV cache, scheduler, engine). Next: M3 polish
-  (profiling the step loop), then M4 benchmarks.
+- **Milestone:** M0-M3 done, M4 offline done, M6 server done and tested. Running: M4 online +
+  M5 (chunked prefill, prefix caching) queue `benchmarks/queues/m4m5_online.txt`. Next: report
+  for online/M5, tag v1.0, then Tier 2 (speculative decoding, quantization).
 - **Blockers:** none.
 
 ## Session log
@@ -30,3 +31,21 @@
   CoW fork, seeds independent of batch, sampler distribution, stops, logprobs, abort.
 - First smoke number (not a benchmark): SmolLM2-135M, 6 prompts x 40 tokens batched, 67.6 tok/s
   vs 20.7 tok/s single-sequence decode. Per-step Python overhead is high; profiling is next.
+
+### 2026-11-03/04, cloud session 1 (continued)
+- Linear backends: cold-weight microbenchmark (`results/microbench/linear_layout.md`); oneDNN
+  prepacked weights 1.2-3.5x faster than `F.linear` for 4-64 rows; default on CPU fp32.
+- C++ paged-attention decode kernel (`src/llmserve/kernels/csrc/paged_attention.cpp`): reads K/V
+  through block tables, GQA-grouped, `at::parallel_for`. Bug found: without `-fopenmp` the inline
+  `omp parallel` in ATen is ignored and the kernel ran single-threaded. Now 6.4x faster than
+  gather+SDPA at 300-token contexts (40 seqs).
+- Other fixes from profiling: sampler copied the full logits with a boolean mask every step;
+  RoPE tables indexed per layer. Remaining per-step cost: linear layers + eager elementwise ops.
+- M4 offline results (`results/README.md`): SmolLM2-135M, 200 ShareGPT requests: engine 208 tok/s
+  (274 with 128 seqs) vs HF one-at-a-time 19.1 and HF static batch 16 45.0. Qwen3-0.6B, 100
+  requests: engine 75.1 vs HF 7.7 / 8.3. Ablation: PyTorch attention instead of the kernel ->
+  90.5 tok/s (the kernel is the biggest single win).
+- M6: OpenAI-compatible server (completions + chat, SSE streaming with stop-string holdback,
+  n/seed/logprobs, Prometheus metrics, client-disconnect abort), HTTP load tester, Dockerfile.
+  7 server tests with the official `openai` client pass. Real-server smoke test: 30 streaming
+  requests at 2 req/s, TTFT p50 467 ms.

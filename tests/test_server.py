@@ -99,7 +99,9 @@ def test_n_seed_logprobs(oai):
     assert len(a.choices) == 3
     assert [c.text for c in a.choices] == [c.text for c in b.choices]
     lp = a.choices[0].logprobs
-    assert len(lp.token_logprobs) == len(lp.tokens) and all(len(t) == 2 for t in lp.top_logprobs)
+    assert len(lp.token_logprobs) == len(lp.tokens) == 8
+    # keyed by decoded text, so two byte tokens that decode alike (e.g. to U+FFFD) can merge
+    assert all(1 <= len(t) <= 2 for t in lp.top_logprobs)
 
 
 def test_stop_string_never_leaks_in_stream(oai):
