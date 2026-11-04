@@ -26,11 +26,14 @@
 - Commit messages: imperative and specific, e.g. `Add block allocator with ref counts`.
 
 ## Environment notes
-- Cloud machine: 4 vCPU Xeon (AVX-512, VNNI, no AMX/bf16), 15 GB RAM, no GPU. fp32 is the fast dtype.
+- Cloud machine: 4 vCPU Xeon, 15 GB RAM, no GPU. The CPU model can change on a container restart
+  (seen: 2.8 GHz AVX-512 without AMX; 2.1 GHz with AMX/bf16). Check `lscpu` after a restart and keep
+  every comparison table on one CPU (PLAN.md D8). fp32 is the measured dtype.
 - Hugging Face, PyPI and download.pytorch.org are reachable.
 - The cloud machine can be reset while the session is idle; detached jobs die. Keep long jobs
   resumable and in chunks of <= 30 minutes; run one heavy CPU job at a time.
 - Never use `pkill -f`/`pgrep -f` with text that also appears in your own command; kill by PID.
+  Stop benchmark queues with `scripts/stop_queues.sh`; start them with `scripts/run_queues.sh <files>`.
 
 ## Where things go
 | Path | What | In git? |

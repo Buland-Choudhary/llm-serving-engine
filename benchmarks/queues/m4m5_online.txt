@@ -1,5 +1,5 @@
 # M4 online: Poisson arrivals, SmolLM2-135M, 100 ShareGPT requests per rate. SLO: TTFT<=2s, TPOT<=250ms
-.venv/bin/llmserve bench --system engine --model smollm2-135m --num-requests 100 --rate 0.25 --slo-ttft-ms 2000 --slo-tpot-ms 250 --out results/m4/online/smollm2-135m__engine__rate0.25.json
+# (discarded; rerun in the final single-machine pass) .venv/bin/llmserve bench --system engine --model smollm2-135m --num-requests 100 --rate 0.25 --slo-ttft-ms 2000 --slo-tpot-ms 250 --out results/m4/online/smollm2-135m__engine__rate0.25.json
 .venv/bin/llmserve bench --system hf-static --batch-size 16 --model smollm2-135m --num-requests 100 --rate 0.25 --slo-ttft-ms 2000 --slo-tpot-ms 250 --out results/m4/online/smollm2-135m__hf-static16__rate0.25.json
 .venv/bin/llmserve bench --system hf-seq --model smollm2-135m --num-requests 100 --rate 0.25 --slo-ttft-ms 2000 --slo-tpot-ms 250 --out results/m4/online/smollm2-135m__hf-seq__rate0.25.json
 .venv/bin/llmserve bench --system engine --model smollm2-135m --num-requests 100 --rate 0.5 --slo-ttft-ms 2000 --slo-tpot-ms 250 --out results/m4/online/smollm2-135m__engine__rate0.5.json
