@@ -1,0 +1,23 @@
+{
+ "ppl": 15.705239753084735,
+ "nll": 2.7539943989094073,
+ "tokens": 39960,
+ "window": 1024,
+ "model": "smollm2-360m",
+ "quantization": "int4-awq",
+ "quantize_lm_head": false,
+ "group_size": 64,
+ "weight_bytes": 582905600,
+ "load_s": 63.0045645236969,
+ "eval_s": 102.97579598426819,
+ "env": {
+  "git_sha": "755aa4a",
+  "time": "2026-11-04T03:48:43+0000",
+  "cpu": "Intel(R) Xeon(R) Processor @ 2.10GHz",
+  "num_cpus": 4,
+  "torch_threads": 4,
+  "torch": "2.15.0+cpu",
+  "python": "3.13.18",
+  "device": "cpu"
+ }
+}
