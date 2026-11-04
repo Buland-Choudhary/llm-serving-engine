@@ -1,0 +1,5 @@
+.venv/bin/llmserve bench --system engine --model smollm2-135m --workload synthetic --prompt-len 1024 --output-len 64 --num-requests 60 --rate 0.5 --max-num-batched-tokens 256 --slo-ttft-ms 5000 --slo-tpot-ms 250 --out results/m5/chunked/smollm2-135m__chunked__rate0.5.json
+.venv/bin/llmserve bench --system engine --model smollm2-135m --workload synthetic --prompt-len 1024 --output-len 64 --num-requests 60 --rate 0.5 --max-num-batched-tokens 256 --slo-ttft-ms 5000 --slo-tpot-ms 250 --out results/m5/chunked/smollm2-135m__nochunk__rate0.5.json
+.venv/bin/llmserve bench --system engine --model smollm2-135m --workload synthetic --prompt-len 1024 --output-len 64 --num-requests 60 --rate 1.0 --max-num-batched-tokens 256 --slo-ttft-ms 5000 --slo-tpot-ms 250 --out results/m5/chunked/smollm2-135m__chunked__rate1.0.json
+.venv/bin/llmserve bench --system engine --model smollm2-135m --workload synthetic --prompt-len 1024 --output-len 64 --num-requests 60 --rate 1.0 --max-num-batched-tokens 256 --slo-ttft-ms 5000 --slo-tpot-ms 250 --out results/m5/chunked/smollm2-135m__nochunk__rate1.0.json
+.venv/bin/python benchmarks/chunked_stall.py --out results/m5/chunked_stall.json

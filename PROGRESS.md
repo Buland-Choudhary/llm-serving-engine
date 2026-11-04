@@ -87,3 +87,8 @@
   `engine-torchattn-torchlinear` (ran oneDNN; the result file's recorded backend showed it).
   Fixed with a regression test (`test_engine_config_reaches_the_model`); both re-queued.
   Lesson: every scripted edit asserts its target exists.
+- Scheduler fix: with chunked prefill off, an over-budget prompt used to wait until the running
+  batch drained (starvation: 13.1 s TTFT in the stall test). It now runs in a step of its own,
+  pausing decodes for that step (the classic non-chunked behaviour). M5 chunked results re-run.
+- Online engine @ 0.25 req/s re-run on the 2.8 GHz CPU (same as the rest of that table):
+  TTFT p50 246 ms, no outlier cluster.
