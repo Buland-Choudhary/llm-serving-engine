@@ -30,6 +30,12 @@ def oai(client):
     return openai.OpenAI(base_url="http://testserver/v1", api_key="none", http_client=client)
 
 
+def test_ui_and_stats(client):
+    assert "llmserve" in client.get("/").text
+    s = client.get("/stats").json()
+    assert {"num_running", "kv_cache_usage", "num_kv_blocks"} <= set(s)
+
+
 def test_health_models_metrics(client):
     assert client.get("/health").json() == {"status": "ok"}
     assert client.get("/v1/models").json()["data"][0]["id"] == "tiny"

@@ -45,6 +45,7 @@ explicit = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/llmserve"]
+artifacts = ["src/llmserve/server/static/*", "src/llmserve/kernels/csrc/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

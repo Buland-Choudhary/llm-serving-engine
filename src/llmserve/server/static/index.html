@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>llmserve console</title>
+<style>
+:root {
+  color-scheme: light;
+  --bg: #fcfcfb; --panel: #ffffff; --border: #e4e3df; --text: #0b0b0b; --muted: #52514e;
+  --accent: #2a78d6; --accent-ink: #ffffff; --user: #eef3fb; --bar: #2a78d6; --bar-bg: #ecebe7;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #1a1a19; --panel: #222220; --border: #3a3936; --text: #f0efec; --muted: #c3c2b7;
+    --accent: #3987e5; --accent-ink: #ffffff; --user: #26303d; --bar: #3987e5; --bar-bg: #33322f;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #1a1a19; --panel: #222220; --border: #3a3936; --text: #f0efec; --muted: #c3c2b7;
+  --accent: #3987e5; --accent-ink: #ffffff; --user: #26303d; --bar: #3987e5; --bar-bg: #33322f;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+header .sub { color: var(--muted); font-size: 12px; }
+main { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; padding: 16px; max-width: 1200px; margin: 0 auto; }
+@media (max-width: 800px) { main { grid-template-columns: 1fr; } }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+#log { height: 55vh; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; }
+.msg { padding: 8px 12px; border-radius: 10px; white-space: pre-wrap; word-wrap: break-word; max-width: 90%; }
+.msg.user { background: var(--user); align-self: flex-end; }
+.msg.assistant { border: 1px solid var(--border); align-self: flex-start; }
+.msg .meta { color: var(--muted); font-size: 11px; margin-top: 4px; }
+form { display: flex; gap: 8px; margin-top: 12px; }
+textarea, input, select { font: inherit; color: var(--text); background: var(--bg);
+  border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+#prompt { flex: 1; resize: vertical; min-height: 42px; }
+button { font: inherit; background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 8px; padding: 8px 16px; cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+.controls { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; color: var(--muted); font-size: 12px; align-items: center; }
+.controls label { display: flex; gap: 6px; align-items: center; }
+.controls input[type=number] { width: 72px; }
+#schema { width: 100%; min-height: 70px; margin-top: 8px; display: none; font-family: ui-monospace, monospace; font-size: 12px; }
+.stat { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid var(--border); }
+.stat:last-child { border-bottom: 0; }
+.stat span:first-child { color: var(--muted); }
+.stat span:last-child { font-variant-numeric: tabular-nums; }
+.bar { height: 8px; background: var(--bar-bg); border-radius: 4px; overflow: hidden; margin: 4px 0 8px; }
+.bar > div { height: 100%; background: var(--bar); border-radius: 4px; width: 0; transition: width .3s; }
+h2 { font-size: 13px; margin: 0 0 8px; font-weight: 600; }
+</style>
+</head>
+<body>
+<header>
+  <h1>llmserve</h1>
+  <span class="sub" id="modelinfo">connecting...</span>
+</header>
+<main>
+  <section class="panel">
+    <div id="log" aria-live="polite"></div>
+    <form id="f">
+      <textarea id="prompt" placeholder="Ask something... (Enter to send, Shift+Enter for a new line)"></textarea>
+      <button id="send" type="submit">Send</button>
+    </form>
+    <div class="controls">
+      <label>model <select id="model"></select></label>
+      <label>temperature <input id="temp" type="number" min="0" max="2" step="0.1" value="0.7"></label>
+      <label>max tokens <input id="maxtok" type="number" min="1" max="2048" value="256"></label>
+      <label><input id="jsonmode" type="checkbox"> JSON schema</label>
+      <button id="clear" type="button" style="background:transparent;color:var(--muted);border:1px solid var(--border)">Clear</button>
+    </div>
+    <textarea id="schema">{"type": "object", "properties": {"city": {"type": "string", "maxLength": 30}, "population_millions": {"type": "number"}}}</textarea>
+  </section>
+  <aside class="panel">
+    <h2>Engine</h2>
+    <div class="stat"><span>running sequences</span><span id="s-run">-</span></div>
+    <div class="stat"><span>waiting</span><span id="s-wait">-</span></div>
+    <div class="stat"><span>KV cache in use</span><span id="s-kv">-</span></div>
+    <div class="bar"><div id="b-kv"></div></div>
+    <div class="stat"><span>last step</span><span id="s-step">-</span></div>
+    <div class="stat"><span>tokens / s (last step)</span><span id="s-tps">-</span></div>
+    <div class="stat"><span>prefix-cache hit rate</span><span id="s-pc">-</span></div>
+    <div class="stat"><span>preemptions</span><span id="s-pre">-</span></div>
+    <div class="stat"><span>speculative acceptance</span><span id="s-spec">-</span></div>
+  </aside>
+</main>
+<script>
+const $ = (id) => document.getElementById(id);
+const history = [];
+
+async function init() {
+  try {
+    const r = await (await fetch("/v1/models")).json();
+    $("model").innerHTML = r.data.map((m) => `<option>${m.id}</option>`).join("");
+    $("modelinfo").textContent = `${r.data[0].id} · OpenAI-compatible API at /v1`;
+  } catch (e) { $("modelinfo").textContent = "server unreachable"; }
+}
+
+function addMsg(role, text) {
+  const d = document.createElement("div");
+  d.className = `msg ${role}`;
+  d.textContent = text;
+  $("log").appendChild(d);
+  $("log").scrollTop = $("log").scrollHeight;
+  return d;
+}
+
+async function send(ev) {
+  ev.preventDefault();
+  const text = $("prompt").value.trim();
+  if (!text) return;
+  $("prompt").value = "";
+  history.push({ role: "user", content: text });
+  addMsg("user", text);
+  const out = addMsg("assistant", "");
+  $("send").disabled = true;
+  const body = {
+    model: $("model").value, messages: history, stream: true,
+    temperature: parseFloat($("temp").value), max_tokens: parseInt($("maxtok").value),
+    stream_options: { include_usage: true }, chat_template_kwargs: { enable_thinking: false },
+  };
+  if ($("jsonmode").checked) {
+    try { body.response_format = { type: "json_schema", json_schema: { name: "ui", schema: JSON.parse($("schema").value) } }; }
+    catch (e) { out.textContent = "invalid JSON schema: " + e.message; $("send").disabled = false; return; }
+  }
+  const t0 = performance.now();
+  let ttft = null, ntok = 0, acc = "";
+  try {
+    const resp = await fetch("/v1/chat/completions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    if (!resp.ok) { out.textContent = (await resp.json()).error?.message || resp.statusText; return; }
+    const reader = resp.body.getReader();
+    const dec = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf("\n\n")) >= 0) {
+        const line = buf.slice(0, i); buf = buf.slice(i + 2);
+        if (!line.startsWith("data: ") || line === "data: [DONE]") continue;
+        const ch = JSON.parse(line.slice(6));
+        if (ch.usage) ntok = ch.usage.completion_tokens;
+        const delta = ch.choices?.[0]?.delta?.content;
+        if (delta) { if (ttft === null) ttft = performance.now() - t0; acc += delta; out.textContent = acc; $("log").scrollTop = $("log").scrollHeight; }
+      }
+    }
+    const secs = (performance.now() - t0) / 1000;
+    const meta = document.createElement("div");
+    meta.className = "meta";
+    meta.textContent = `${ntok} tokens · first token ${ttft ? (ttft / 1000).toFixed(2) : "-"} s · ${(ntok / secs).toFixed(1)} tok/s`;
+    out.appendChild(meta);
+    history.push({ role: "assistant", content: acc });
+  } catch (e) { out.textContent = "error: " + e.message; }
+  finally { $("send").disabled = false; }
+}
+
+async function poll() {
+  try {
+    const s = await (await fetch("/stats")).json();
+    $("s-run").textContent = s.num_running;
+    $("s-wait").textContent = s.num_waiting;
+    $("s-kv").textContent = (100 * s.kv_cache_usage).toFixed(1) + "% of " + s.num_kv_blocks + " blocks";
+    $("b-kv").style.width = (100 * s.kv_cache_usage).toFixed(1) + "%";
+    $("s-step").textContent = s.last_step_ms != null ? s.last_step_ms.toFixed(0) + " ms · " + s.last_step_seqs + " seqs" : "-";
+    $("s-tps").textContent = s.last_step_tok_s != null ? s.last_step_tok_s.toFixed(0) : "-";
+    $("s-pc").textContent = s.prefix_cache_queries ? (100 * s.prefix_cache_hits / s.prefix_cache_queries).toFixed(0) + "%" : "-";
+    $("s-pre").textContent = s.num_preemptions;
+    $("s-spec").textContent = s.spec_proposed ? (100 * s.spec_accepted / s.spec_proposed).toFixed(0) + "%" : "off";
+  } catch (e) { /* server restarting */ }
+}
+
+$("f").addEventListener("submit", send);
+$("prompt").addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.shiftKey) send(e); });
+$("jsonmode").addEventListener("change", () => { $("schema").style.display = $("jsonmode").checked ? "block" : "none"; });
+$("clear").addEventListener("click", () => { history.length = 0; $("log").innerHTML = ""; });
+init(); poll(); setInterval(poll, 1000);
+</script>
+</body>
+</html>

@@ -12,9 +12,10 @@ import json
 import time
 import uuid
 from collections.abc import AsyncIterator
+from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, PlainTextResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 
 from llmserve.engine import EngineConfig, LLMEngine
 from llmserve.sequence import RequestOutput
@@ -95,6 +96,24 @@ def build_app(engine: LLMEngine, model_name: str, default_max_tokens: int = 256)
                 for m in [model_name, *sorted(lora_names)]
             ],
         }
+
+    static = Path(__file__).parent / "static" / "index.html"
+
+    @app.get("/", include_in_schema=False)
+    def ui():
+        return HTMLResponse(static.read_text())
+
+    @app.get("/stats")
+    def stats():
+        s = engine.stats()
+        st = engine.last_step
+        if st.num_seqs:
+            s.update(
+                last_step_ms=st.step_time * 1000,
+                last_step_seqs=st.num_seqs,
+                last_step_tok_s=(st.num_decode_tokens + st.num_prefill_tokens) / st.step_time,
+            )
+        return s
 
     @app.get("/metrics")
     def prom():
