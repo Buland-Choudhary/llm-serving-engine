@@ -1,0 +1,68 @@
+{
+ "env": {
+  "git_sha": "eacc981",
+  "time": "2026-11-04T22:21:20+0000",
+  "cpu": "Intel(R) Xeon(R) Processor",
+  "num_cpus": 4,
+  "torch_threads": 4,
+  "torch": "2.15.0+cu132",
+  "python": "3.13.18",
+  "device": "cpu"
+ },
+ "args": {
+  "base_url": "http://127.0.0.1:8095",
+  "model": "smollm2-135m",
+  "tokenizer": null,
+  "num_requests": 60,
+  "rate": 1.0,
+  "seed": 0,
+  "max_prompt_len": 512,
+  "max_output_len": 128,
+  "out": "runs/exp_b64.json"
+ },
+ "workload": {
+  "num_requests": 60,
+  "prompt_len_mean": 71.75,
+  "prompt_len_p50": 28,
+  "prompt_len_max": 419,
+  "output_len_mean": 118.86666666666666,
+  "output_len_p50": 128,
+  "output_len_max": 128,
+  "total_prompt_tokens": 4305,
+  "total_output_tokens": 7132,
+  "workload_hash": "aec1df403c6f"
+ },
+ "summary": {
+  "duration_s": 60.88855158599972,
+  "num_requests": 60,
+  "request_throughput": 0.9854069186595,
+  "output_throughput": 117.1320357313259,
+  "total_token_throughput": 187.83498214514503,
+  "ttft_ms": {
+   "mean": 188.00949876279682,
+   "p50": 130.72606053906276,
+   "p90": 397.38698294366156,
+   "p99": 601.3374589250265
+  },
+  "tpot_ms": {
+   "mean": 38.579858843242214,
+   "p50": 37.55443173636281,
+   "p90": 45.979701649604806,
+   "p99": 47.81805505023747
+  },
+  "itl_ms": {
+   "mean": 39.14923246354384,
+   "p50": 35.40084399992338,
+   "p90": 47.08919300037451,
+   "p99": 82.9810715997155
+  },
+  "e2e_ms": {
+   "mean": 4743.022695896122,
+   "p50": 4829.164934581552,
+   "p90": 5897.206514716513,
+   "p99": 6416.714612531567
+  }
+ },
+ "streamed_chunks": 7041,
+ "requested_tokens": 7132
+}

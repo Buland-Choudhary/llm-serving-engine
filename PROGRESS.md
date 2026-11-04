@@ -41,6 +41,14 @@
   34.4 vs 18.8 ms (gap 2.3x -> 1.8x). py-spy showed the HTTP layer is not the light-load gap.
 - **int8 KV key smoothing**: Qwen3 identical greedy outputs 3% -> 87% (alpha 1.0), ppl +2.18% ->
   +0.03% (`results/m10/`).
+- Light-load gap diagnosis (SmolLM2, 60 ShareGPT requests at 1 req/s,
+  `results/llamacpp/diagnostics/`): server TPOT p50 35.8 ms; the same workload in-process
+  (`llmserve bench`, no HTTP) 28.1 ms; a steady synthetic batch of 4 decodes in 20.6 ms/step
+  (`results/microbench/decode_step.md`). Ruled out: HTTP/asyncio thread (py-spy: engine thread
+  in `step` ~98%), GIL switch interval (0.1 ms: no change), thread count, prefill token budget
+  (64 vs 512: 37.6 vs 35.8 ms). Open: why steps with Poisson arrivals cost more than steady
+  ones, and the remaining server-only ~7 ms (candidate: the load-test client sharing the 4
+  vCPUs, which hurts OpenMP barriers more than ggml's thread pool).
 - Next: isolate the remaining light-load gap to llama.cpp (prefill interleaving vs attention
   over long contexts); a faster int8 single-stream path (their Q8_0 TPOT is 10.5 ms).
 
