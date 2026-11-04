@@ -177,8 +177,12 @@ def weight_bytes(model: nn.Module) -> int:
     """Bytes of parameters + buffers (tied tensors counted once), excluding RoPE tables."""
     seen, total = set(), 0
     for name, t in list(model.named_parameters()) + list(model.named_buffers()):
-        if "rope" in name or t.data_ptr() in seen:
+        try:
+            key = t.data_ptr()
+        except RuntimeError:  # opaque tensors (oneDNN prepacked weights) have no storage
+            key = id(t)
+        if "rope" in name or key in seen:
             continue
-        seen.add(t.data_ptr())
+        seen.add(key)
         total += t.numel() * t.element_size()
     return total
