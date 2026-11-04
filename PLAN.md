@@ -140,7 +140,11 @@ Tier 1 (core engine + API) is finished and tagged `v1.0` before Tier 2 starts.
   records its CPU; a comparison table only contains runs from one CPU (the report checks and
   labels each table); partial comparison groups that straddle a restart are re-run as a whole.
   fp32 stays the measured configuration so results remain comparable if the CPU flips back.
-  Before the final write-up, every benchmark queue is re-run in one pass on a single machine
-  (current results move to `results/archive/`), so all final tables share one CPU.
+  (Superseded by D9.)
+- **D9 (2026-11-04): per-table consistency instead of a full single-machine re-run.** The
+  container restarts every few hours and the CPU model has changed twice, so a 6-hour re-run of
+  everything would itself likely straddle CPUs. Instead every table must come from one CPU (the
+  report checks this and prints the CPU under each table); groups that straddle a restart are
+  re-run as a group on whichever CPU matches the rest of their table.
 - **D3: own model code.** Writing the transformer ourselves (not wrapping HF modules) is what lets the
   engine own the KV layout, batching and attention. HF stays as a correctness oracle.
