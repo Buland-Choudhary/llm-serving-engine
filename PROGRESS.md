@@ -1,12 +1,11 @@
 # Progress log
 
 ## Current status
-- **Milestone:** all features implemented and tested (81 tests): core engine, server, speculative
-  decoding, quantization, structured output, multi-LoRA, web console, optional torch.compile.
-  Running: `scripts/run_queues.sh` over `m4m5_online` -> `m7_spec` -> `m8_quant` queues.
-- **Next:** when queues finish: regenerate `results/README.md`, tag v1.0, final README + report,
-  screenshots of the console.
-- **Blockers:** none.
+- **Done.** All tiers finished except the int8 KV cache (D10) and tensor parallelism (D7).
+  90 tests + 2 real-checkpoint tests pass; README, `docs/report.md`, `docs/design.md` and
+  `results/README.md` are final. Tagged `v1.0`.
+- **If continuing:** int8 KV cache; a faster long-context attention kernel (it reaches only
+  ~5.6 GB/s at 1000-token contexts); int4 kernel for batches; multi-turn prefix-cache workload.
 
 ## Session log
 

@@ -48,7 +48,7 @@ Tier 1 (core engine + API) is finished and tagged `v1.0` before Tier 2 starts.
 - **M1: model from scratch**
   - [x] config parsing for Llama and Qwen3; weight loader (HF hub download + safetensors, name mapping, tied embeddings)
   - [x] layers: RMSNorm, RoPE (incl. Llama-3 style scaling if present), GQA attention, SwiGLU MLP, Qwen3 q/k-norm
-  - [ ] contiguous KV-cache generate loop (greedy + sampling) as the simple reference path
+  - [x] ~~contiguous KV-cache generate loop~~ superseded: the paged path is the only path, checked directly against HF `generate`
   - [x] parity tests vs HF transformers: tiny random configs (CI) and real checkpoints (slow): logits
         match within tolerance and greedy tokens match exactly
 - **M2: paged KV cache**
@@ -67,19 +67,19 @@ Tier 1 (core engine + API) is finished and tagged `v1.0` before Tier 2 starts.
 - **M4: benchmarks v1**
   - [x] workloads: ShareGPT-style length distribution (sampled subset), fixed-length synthetic, shared-prefix
   - [x] baselines: HF transformers `generate` one request at a time, and static batching (padded, bs=8/16)
-  - [ ] offline throughput; online serving with Poisson arrivals: TTFT, TPOT, E2E p50/p90/p99, goodput under an SLO
+  - [x] offline throughput; online serving with Poisson arrivals: TTFT, TPOT, E2E p50/p90/p99, goodput under an SLO
   - [x] every result JSON records git SHA, CPU model, torch version, threads, model, config, seed
-  - [ ] plots; first headline numbers in README
+  - [x] plots; first headline numbers in README
 - **M5: chunked prefill + prefix caching**
-  - [ ] chunked prefill mixed with decodes under the token budget (decode-first scheduling)
-  - [ ] automatic prefix caching: hash chain over full blocks, cache hits skip prefill, LRU eviction of free cached blocks
-  - [ ] benchmarks: TTFT/ITL under mixed long/short load (chunked vs not); shared-system-prompt and multi-turn workloads (cache on vs off)
+  - [x] chunked prefill mixed with decodes under the token budget (decode-first scheduling)
+  - [x] automatic prefix caching: hash chain over full blocks, cache hits skip prefill, LRU eviction of free cached blocks
+  - [x] benchmarks: TTFT/ITL under mixed long/short load (chunked vs not) + stall test; shared-system-prompt (cache on vs off). Multi-turn workload not run.
 - **M6: OpenAI-compatible server**
   - [x] FastAPI `/v1/completions`, `/v1/chat/completions` (chat templates), `/v1/models`, `/health`
   - [x] SSE streaming, async engine loop in a background thread, cancellation on client disconnect
   - [x] Prometheus `/metrics` (TTFT, TPOT, queue depth, KV-cache usage, prefix-cache hit rate)
   - [x] tests with the official `openai` Python client; HTTP load-test client; Dockerfile
-  - [ ] tag `v1.0`
+  - [x] tag `v1.0` (tagged at the end, with all tiers)
 
 ### Tier 2
 - **M7: speculative decoding**
@@ -87,15 +87,15 @@ Tier 1 (core engine + API) is finished and tagged `v1.0` before Tier 2 starts.
   - [x] verify k draft tokens in one target forward; lossless rejection sampling (Leviathan et al. 2023,
         Chen et al. 2023); KV rollback of rejected slots
   - [x] tests: greedy output identical to non-speculative; sampled distribution matches the target (statistical test)
-  - [ ] benchmarks: acceptance rate, tokens per step, speedup vs k, per workload
+  - [x] benchmarks: acceptance rate, tokens per step, speedup vs k, per workload
 - **M8: quantization**
   - [x] int8 weight-only (per-channel) and int4 weight-only (group-wise, RTN) linear layers using fast CPU kernels where available
   - [x] optional activation-aware scaling (AWQ-style) for int4
-  - [ ] int8 KV cache (per-token-head scales) to double cache capacity
-  - [ ] eval: WikiText-2 perplexity, greedy agreement with fp32, decode speed, memory
+  - [ ] ~~int8 KV cache~~ not done (D10)
+  - [x] eval: WikiText-2 perplexity, decode speed, memory (greedy agreement with fp32 not measured)
 - **M9: kernels and performance**
   - [x] C++/OpenMP paged-attention decode kernel (torch C++ extension) vs gather + SDPA
-  - [ ] profiling breakdown (attention / matmul / sampler / Python overhead) and overhead cuts
+  - [x] profiling breakdown and overhead cuts (per-phase step timings; profiler findings in PROGRESS.md: gather 46% -> kernel, sampler logits copy, RoPE per layer)
   - [x] `torch.compile` on the decode step if it pays off on CPU
 
 ### Tier 3 (if time permits, pick by value)
@@ -105,8 +105,8 @@ Tier 1 (core engine + API) is finished and tagged `v1.0` before Tier 2 starts.
 - [x] web console with live engine metrics (served at `/`)
 
 ### Final
-- [ ] `docs/report.md`: design, every experiment, honest limitations
-- [ ] README final: headline results, charts, architecture diagram, quickstart
+- [x] `docs/report.md`: design, every experiment, honest limitations
+- [x] README final: headline results, charts, architecture diagram, quickstart
 
 ## Benchmark methodology (fixed before measuring)
 - One heavy job at a time on the machine; `torch.set_num_threads(4)`; warm-up run discarded.
@@ -146,5 +146,8 @@ Tier 1 (core engine + API) is finished and tagged `v1.0` before Tier 2 starts.
   everything would itself likely straddle CPUs. Instead every table must come from one CPU (the
   report checks this and prints the CPU under each table); groups that straddle a restart are
   re-run as a group on whichever CPU matches the rest of their table.
+- **D10 (2026-11-04): int8 KV cache not built.** It needs its own attention-kernel variant;
+  the time went into the quantized-linear kernels instead, after finding PyTorch's were slower than
+  fp32 on this CPU, which mattered more for the results.
 - **D3: own model code.** Writing the transformer ourselves (not wrapping HF modules) is what lets the
   engine own the KV layout, batching and attention. HF stays as a correctness oracle.
