@@ -96,6 +96,29 @@ class Scheduler:
         budget = self.cfg.max_num_batched_tokens
         scheduled_ids: set[int] = set()
 
+        # Without chunked prefill, a prompt bigger than the token budget can never share a step
+        # with decodes. Run it in a step of its own (pausing decodes for that step, the classic
+        # non-chunked behaviour) instead of letting it wait until the running batch drains.
+        if not self.cfg.enable_chunked_prefill and self.waiting and self.running:
+            head = self.waiting[0]
+            if head.num_computed_tokens == 0:
+                self.bm.match_prefix(head)
+            n = head.num_tokens - head.num_computed_tokens
+            if (
+                n > budget
+                and len(self.running) < self.cfg.max_num_seqs
+                and self.bm.can_allocate(head, n)
+            ):
+                self.waiting.popleft()
+                self.bm.allocate_slots(head, n)
+                head.status = SeqStatus.RUNNING
+                if head.request.metrics.first_scheduled_time is None:
+                    head.request.metrics.first_scheduled_time = time.monotonic()
+                self.running.append(head)
+                out.scheduled.append(ScheduledSeq(head, n))
+                out.block_copies = self.bm.take_copies()
+                return out
+
         # 1) running sequences, oldest first
         i = 0
         while i < len(self.running) and budget > 0:

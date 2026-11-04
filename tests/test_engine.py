@@ -136,3 +136,21 @@ def test_engine_config_reaches_the_model(tiny_llama_dir):
     assert isinstance(eng.model.layers[0].mlp.down_proj, TransposedLinear)
     eng = engine(quantization="int8")
     assert isinstance(eng.model.layers[0].mlp.down_proj, Int8Linear)
+
+
+def test_nonchunked_long_prompt_is_not_starved(tiny_llama_dir):
+    """Without chunked prefill an over-budget prompt runs in its own step instead of waiting
+    for every running sequence to finish."""
+    eng = make_engine(tiny_llama_dir, enable_chunked_prefill=False, max_num_batched_tokens=16)
+    sp = SamplingParams(temperature=0, max_tokens=40, ignore_eos=True)
+    for p in _prompts(10, lens=(4, 5, 6)):
+        eng.add_request(p, sp)
+    for _ in range(3):
+        eng.step()
+    long_id = eng.add_request(_prompts(11, lens=(40,))[0], GREEDY)
+    for _ in range(3):
+        for o in eng.step():
+            if o.request_id == long_id:
+                assert o.outputs[0].token_ids  # got its first token within a few steps
+                return
+    raise AssertionError("long prompt was starved")
