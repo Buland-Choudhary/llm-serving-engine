@@ -1,0 +1,15 @@
+# Re-run after the engine config fix (PROGRESS 2026-11-04 04:35) and the new int8/int4 kernels
+.venv/bin/llmserve ppl --max-tokens 40000 --model smollm2-135m --quantization int8 --out results/m8/ppl/smollm2-135m__int8.json
+.venv/bin/llmserve ppl --max-tokens 40000 --model smollm2-135m --quantization int8 --quantize-lm-head --out results/m8/ppl/smollm2-135m__int8-lmhead.json
+.venv/bin/llmserve ppl --max-tokens 40000 --model smollm2-360m --quantization int8 --out results/m8/ppl/smollm2-360m__int8.json
+.venv/bin/llmserve ppl --max-tokens 40000 --model smollm2-360m --quantization int8 --quantize-lm-head --out results/m8/ppl/smollm2-360m__int8-lmhead.json
+.venv/bin/llmserve ppl --max-tokens 40000 --model qwen3-0.6b --quantization int8 --out results/m8/ppl/qwen3-0.6b__int8.json
+.venv/bin/llmserve ppl --max-tokens 40000 --model qwen3-0.6b --quantization int8 --quantize-lm-head --out results/m8/ppl/qwen3-0.6b__int8-lmhead.json
+.venv/bin/llmserve bench --system engine --model qwen3-0.6b --num-requests 12 --max-num-seqs 1 --max-output-len 96  --out results/m8/speed/qwen3-0.6b__fp32__bs1.json
+.venv/bin/llmserve bench --system engine --model qwen3-0.6b --num-requests 100  --out results/m8/speed/qwen3-0.6b__fp32__offline.json
+.venv/bin/llmserve bench --system engine --model qwen3-0.6b --num-requests 12 --max-num-seqs 1 --max-output-len 96 --quantization int8 --out results/m8/speed/qwen3-0.6b__int8__bs1.json
+.venv/bin/llmserve bench --system engine --model qwen3-0.6b --num-requests 100 --quantization int8 --out results/m8/speed/qwen3-0.6b__int8__offline.json
+.venv/bin/llmserve bench --system engine --model qwen3-0.6b --num-requests 12 --max-num-seqs 1 --max-output-len 96 --quantization int4 --out results/m8/speed/qwen3-0.6b__int4__bs1.json
+.venv/bin/llmserve bench --system engine --model qwen3-0.6b --num-requests 100 --quantization int4 --out results/m8/speed/qwen3-0.6b__int4__offline.json
+.venv/bin/llmserve bench --system engine --model qwen3-0.6b --num-requests 12 --max-num-seqs 1 --max-output-len 96 --quantization int8 --quantize-lm-head --out results/m8/speed/qwen3-0.6b__int8-lmhead__bs1.json
+.venv/bin/llmserve bench --system engine --model smollm2-135m --num-requests 200 --attention-backend torch --linear-backend torch --out results/m4/offline/smollm2-135m__engine-torchattn-torchlinear.json

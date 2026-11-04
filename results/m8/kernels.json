@@ -1,7 +1,7 @@
 {
  "env": {
-  "git_sha": "40e975f",
-  "time": "2026-11-04T04:34:34+0000",
+  "git_sha": "8741366-dirty",
+  "time": "2026-11-04T04:49:19+0000",
   "cpu": "Intel(R) Xeon(R) Processor @ 2.80GHz",
   "num_cpus": 4,
   "torch_threads": 4,
@@ -16,57 +16,63 @@
  "rows": [
   {
    "M": 1,
-   "fp32 oneDNN": 1.0092660000016924,
-   "int8 aten kernel": 3.3259611666665023,
-   "int8 llmserve GEMV": 0.3965470416649926,
-   "int8 (dispatch)": 0.39653608332912427,
-   "int4 fused kernel": 7.247139749997207,
-   "W8A8 _int_mm": 0.874977999998805
+   "fp32 oneDNN": 1.1673805833349131,
+   "int8 aten kernel": 3.5937518333355456,
+   "int8 llmserve GEMV": 0.3906323333353612,
+   "int8 (dispatch)": 0.7073406666696277,
+   "int4 aten kernel": 7.419728958325322,
+   "int4 (llmserve)": 0.5078235000060735,
+   "W8A8 _int_mm": 0.8575623333418511
   },
   {
    "M": 4,
-   "fp32 oneDNN": 0.924522458333854,
-   "int8 aten kernel": 8.203044625001136,
-   "int8 llmserve GEMV": 0.8394493749979878,
-   "int8 (dispatch)": 0.8843452083292883,
-   "int4 fused kernel": 39.10085220833063,
-   "W8A8 _int_mm": 0.8907774166668029
+   "fp32 oneDNN": 0.9459752083292491,
+   "int8 aten kernel": 10.72216654166406,
+   "int8 llmserve GEMV": 1.0060863333289187,
+   "int8 (dispatch)": 0.8941934583314529,
+   "int4 aten kernel": 33.29040037499453,
+   "int4 (llmserve)": 2.9566424999908727,
+   "W8A8 _int_mm": 1.2952552499996273
   },
   {
    "M": 16,
-   "fp32 oneDNN": 1.314820041666091,
-   "int8 aten kernel": 37.942251208335165,
-   "int8 llmserve GEMV": 3.3742227083356133,
-   "int8 (dispatch)": 3.6070190000003777,
-   "int4 fused kernel": 117.21344945833323,
-   "W8A8 _int_mm": 1.073998041666376
+   "fp32 oneDNN": 1.526637416664774,
+   "int8 aten kernel": 39.85793474999847,
+   "int8 llmserve GEMV": 3.2235764166633394,
+   "int8 (dispatch)": 1.2322434583325048,
+   "int4 aten kernel": 125.76566075000528,
+   "int4 (llmserve)": 8.116885208333239,
+   "W8A8 _int_mm": 1.0564137499973942
   },
   {
    "M": 64,
-   "fp32 oneDNN": 2.5330367083332326,
-   "int8 aten kernel": 152.79239300000333,
-   "int8 llmserve GEMV": 13.759219291666605,
-   "int8 (dispatch)": 21.510357041663042,
-   "int4 fused kernel": 47.675023666665574,
-   "W8A8 _int_mm": 1.5991008750025533
+   "fp32 oneDNN": 2.3663278749950223,
+   "int8 aten kernel": 150.8562225833335,
+   "int8 llmserve GEMV": 15.66849766666678,
+   "int8 (dispatch)": 2.2635664166633283,
+   "int4 aten kernel": 430.8837590833339,
+   "int4 (llmserve)": 50.132574541663644,
+   "W8A8 _int_mm": 2.057231541660561
   },
   {
    "M": 256,
-   "fp32 oneDNN": 7.15558866666773,
-   "int8 aten kernel": 602.6804976666682,
-   "int8 llmserve GEMV": 25.468614791667694,
-   "int8 (dispatch)": 31.367019708331632,
-   "int4 fused kernel": 63.867401375001506,
-   "W8A8 _int_mm": 5.606591958330871
+   "fp32 oneDNN": 8.851172708328173,
+   "int8 aten kernel": 599.080290249996,
+   "int8 llmserve GEMV": 594.5725365416669,
+   "int8 (dispatch)": 4.3080628333408795,
+   "int4 aten kernel": 1677.5759131666632,
+   "int4 (llmserve)": 57.73149441666684,
+   "W8A8 _int_mm": 7.068265125004321
   },
   {
    "M": 1024,
-   "fp32 oneDNN": 37.679558833332294,
-   "int8 aten kernel": 2247.4460151250023,
-   "int8 llmserve GEMV": 58.95130249999644,
-   "int8 (dispatch)": 58.32236637499951,
-   "int4 fused kernel": 71.36638199999841,
-   "W8A8 _int_mm": 30.130437458330068
+   "fp32 oneDNN": 30.824289874999522,
+   "int8 aten kernel": 2213.0400515833344,
+   "int8 llmserve GEMV": 2484.6569761249953,
+   "int8 (dispatch)": 31.081338791665303,
+   "int4 aten kernel": 6289.018041166675,
+   "int4 (llmserve)": 65.22488612499917,
+   "W8A8 _int_mm": 28.485821416666113
   }
  ]
 }

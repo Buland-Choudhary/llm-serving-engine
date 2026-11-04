@@ -15,13 +15,17 @@ def test_int8_linear_matches_dequantized_reference():
     torch.manual_seed(0)
     lin = nn.Linear(128, 96, bias=True)
     q = Int8Linear(lin)
-    x = torch.randn(5, 128)
+    x = torch.randn(3, 128)  # <= gemv_max_rows: exact weight-only path
     ref = x @ q.dequantize().t() + lin.bias
     torch.testing.assert_close(q(x), ref, atol=1e-4, rtol=1e-4)
     assert (q.dequantize() - lin.weight).abs().max() <= q.scale.max() / 2 + 1e-6
-    # large inputs take the dequantize + GEMM path: same result
+    # larger inputs take the W8A8 path: per-token activation rounding, ~1% relative error
     xl = torch.randn(40, 128)
-    torch.testing.assert_close(q(xl), xl @ q.dequantize().t() + lin.bias, atol=1e-4, rtol=1e-4)
+    ref = xl @ q.dequantize().t() + lin.bias
+    assert ((q(xl) - ref).norm() / ref.norm()) < 0.02
+    for path in ("dequant", "aten"):
+        q.kernel = path
+        torch.testing.assert_close(q(xl), ref, atol=1e-4, rtol=1e-4)
 
 
 def test_int4_linear_matches_dequantized_reference():
@@ -94,6 +98,21 @@ def test_own_int8_gemv_matches_reference(rows):
     q = Int8Linear(lin)
     x = torch.randn(rows, 200)
     ref = x @ q.dequantize().t()
-    torch.testing.assert_close(q(x), ref, atol=1e-4, rtol=1e-4)
-    q.kernel = "aten"
-    torch.testing.assert_close(q(x), ref, atol=1e-4, rtol=1e-4)
+    for path in ("gemv", "aten"):
+        q.kernel = path
+        torch.testing.assert_close(q(x), ref, atol=1e-4, rtol=1e-4)
+
+
+@pytest.mark.parametrize("rows", [1, 5, 16])
+def test_own_int4_gemv_matches_reference(rows):
+    from llmserve.kernels import load_int8_gemv
+
+    if load_int8_gemv() is None:
+        pytest.skip("no C++ toolchain")
+    torch.manual_seed(rows)
+    m = Int4Linear(nn.Linear(256, 80, bias=False), group_size=64)  # aten packing: N % 16 == 0
+    x = torch.randn(rows, 256)
+    ref = x @ m.dequantize().t()
+    torch.testing.assert_close(m(x), ref, atol=2e-4, rtol=2e-4)
+    m.kernel = "aten"
+    torch.testing.assert_close(m(x), ref, atol=2e-4, rtol=2e-4)

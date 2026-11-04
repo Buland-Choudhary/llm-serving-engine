@@ -20,34 +20,56 @@ from llmserve.models.layers import swap_linears
 
 
 class Int8Linear(nn.Module):
-    """y = x @ (q * s)^T with q int8 [out, in] and one fp32 scale per output channel."""
+    """Int8 weights (one fp32 scale per output channel), two execution paths:
+
+    * <= ``gemv_max_rows`` rows (decode): exact weight-only math with our C++ GEMV, which streams
+      each int8 weight row once (2.5x faster than fp32 for one row on the benchmark CPU).
+    * more rows (batched decode, prefill): activations are quantized per token to int8 too
+      (W8A8) and multiplied with an int8 x int8 -> int32 GEMM (``torch._int_mm``, VNNI/AMX).
+      This is the fastest path from ~16 rows up and adds a small activation-rounding error.
+
+    Measured in ``results/m8/kernels.md``. PyTorch's ``_weight_int8pack_mm`` was slower than fp32
+    at every size there and is only kept as a fallback when the C++ kernel cannot be built.
+    """
+
+    gemv_max_rows = 4
+    # "auto" (GEMV / W8A8 dispatch), or force one path: "gemv", "w8a8", "aten", "dequant"
+    kernel = "auto"
 
     def __init__(self, linear: nn.Linear) -> None:
         super().__init__()
         w = linear.weight.detach().float()
         scale = (w.abs().amax(dim=1) / 127.0).clamp_min(1e-8)
-        self.register_buffer(
-            "qweight", torch.round(w / scale[:, None]).clamp(-128, 127).to(torch.int8)
-        )
+        q = torch.round(w / scale[:, None]).clamp(-127, 127).to(torch.int8)
+        self.register_buffer("qweight", q)
         self.register_buffer("scale", scale.contiguous())
-        self.bias = (
-            None if linear.bias is None else nn.Parameter(linear.bias.detach().clone(), False)
-        )
+        bias = linear.bias
+        self.bias = None if bias is None else nn.Parameter(bias.detach().clone(), False)
         self.in_features, self.out_features = linear.in_features, linear.out_features
+        self._qweight_t = None  # [in, out] int8 for _int_mm, built lazily
 
-    # The fused kernel costs ~linear time in rows (it behaves like one GEMV per row), so it only
-    # wins in the memory-bound decode regime. For prefill-sized inputs, dequantizing once and
-    # running a regular fp32 GEMM is far faster (results/m8/kernels.md).
-    max_fused_rows = 16
-    kernel = "llmserve"  # "llmserve" (own C++ GEMV) or "aten" (_weight_int8pack_mm)
+    def _w8a8(self, x2: torch.Tensor) -> torch.Tensor:
+        if self._qweight_t is None:
+            self._qweight_t = self.qweight.t().contiguous()
+        xs = (x2.abs().amax(dim=1, keepdim=True) / 127.0).clamp_min(1e-8)
+        xq = torch.round(x2 / xs).clamp(-127, 127).to(torch.int8)
+        return torch._int_mm(xq, self._qweight_t).float() * xs * self.scale
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         shape = x.shape
-        x2 = x.reshape(-1, shape[-1])
-        if x2.shape[0] > self.max_fused_rows:
+        x2 = x.reshape(-1, shape[-1]).contiguous()
+        path = self.kernel
+        if path == "auto":
+            path = "gemv" if x2.shape[0] <= self.gemv_max_rows else "w8a8"
+        k = load_int8_gemv() if path == "gemv" else None
+        if path == "gemv" and (k is None or x2.shape[0] > 64):
+            path = "aten"
+        if path == "gemv":
+            y = k.int8_linear(x2, self.qweight, self.scale)
+        elif path == "w8a8":
+            y = self._w8a8(x2)
+        elif path == "dequant":
             y = x2 @ self.dequantize().t()
-        elif self.kernel == "llmserve" and (k := load_int8_gemv()) is not None:
-            y = k.int8_linear(x2.contiguous(), self.qweight, self.scale)
         else:
             y = torch.ops.aten._weight_int8pack_mm(x2, self.qweight, self.scale)
         y = y.reshape(*shape[:-1], self.out_features)
@@ -98,7 +120,8 @@ class Int4Linear(nn.Module):
             None if linear.bias is None else nn.Parameter(linear.bias.detach().clone(), False)
         )
 
-    max_fused_rows = 16
+    max_fused_rows = 16  # above this: dequantize + GEMM
+    kernel = "auto"  # "auto" (our C++ GEMV for small batches) or "aten" (fused PyTorch kernel)
 
     def dequantize(self) -> torch.Tensor:
         """fp32 weight [out, in] of the (scaled) quantized matrix."""
@@ -113,8 +136,13 @@ class Int4Linear(nn.Module):
         x2 = x.reshape(-1, shape[-1])
         if self.inv_act_scale is not None:
             x2 = x2 * self.inv_act_scale
+        k = load_int8_gemv() if self.kernel == "auto" else None
         if x2.shape[0] > self.max_fused_rows:
             y = x2 @ self.dequantize().t()
+        elif k is not None:
+            y = k.int4_linear(
+                x2.contiguous(), self.nibbles, self.g_scale, self.g_zero, self.group_size
+            )
         else:
             y = torch.ops.aten._weight_int4pack_mm_for_cpu(
                 x2.contiguous(), self.packed, self.group_size, self.scales_zeros

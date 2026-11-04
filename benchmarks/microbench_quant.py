@@ -15,13 +15,16 @@ from llmserve.quant import Int4Linear, Int8Linear
 
 
 class _Fused8(Int8Linear):
-    max_fused_rows = 1 << 30  # always PyTorch's fused kernel
-    kernel = "aten"
+    kernel = "aten"  # PyTorch's _weight_int8pack_mm
 
 
 class _Own8(Int8Linear):
-    max_fused_rows = 64  # own C++ GEMV for every size it supports
-    kernel = "llmserve"
+    kernel = "gemv"  # our C++ GEMV (up to 64 rows)
+
+
+class _Aten4(Int4Linear):
+    kernel = "aten"
+    max_fused_rows = 1 << 30
 
 
 class _W8A8(nn.Module):
@@ -61,7 +64,8 @@ def main():
         "int8 aten kernel": [_Fused8(b) for b in base],
         "int8 llmserve GEMV": [_Own8(b) for b in base],
         "int8 (dispatch)": [Int8Linear(b) for b in base],
-        "int4 fused kernel": [Int4Linear(b, 64) for b in base],
+        "int4 aten kernel": [_Aten4(b, 64) for b in base],
+        "int4 (llmserve)": [Int4Linear(b, 64) for b in base],
         "W8A8 _int_mm": [_W8A8(b) for b in base],
     }
     rows = []

@@ -123,25 +123,16 @@ def test_engine_config_reaches_the_model(tiny_llama_dir):
     from llmserve.engine import EngineConfig, LLMEngine
     from llmserve.models.layers import TransposedLinear
     from llmserve.quant import Int8Linear
+    from tests.conftest import byte_tokenizer
 
-    eng = LLMEngine(
-        EngineConfig(
-            model=str(tiny_llama_dir),
-            num_kv_blocks=32,
-            block_size=4,
-            max_model_len=128,
-            linear_backend="transposed",
+    def engine(**kw):
+        cfg = EngineConfig(
+            model=str(tiny_llama_dir), num_kv_blocks=32, block_size=4, max_model_len=128, **kw
         )
-    )
+        return LLMEngine(cfg, tokenizer=byte_tokenizer())
+
+    eng = engine(linear_backend="transposed")
     assert eng.model.linear_backend == "transposed"
     assert isinstance(eng.model.layers[0].mlp.down_proj, TransposedLinear)
-    eng = LLMEngine(
-        EngineConfig(
-            model=str(tiny_llama_dir),
-            num_kv_blocks=32,
-            block_size=4,
-            max_model_len=128,
-            quantization="int8",
-        )
-    )
+    eng = engine(quantization="int8")
     assert isinstance(eng.model.layers[0].mlp.down_proj, Int8Linear)
