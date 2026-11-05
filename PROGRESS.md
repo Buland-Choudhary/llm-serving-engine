@@ -34,7 +34,7 @@
 - Container restarted once mid-queue (same CPU after restart); the queue resumed.
 - Mistakes: the first llama.cpp attempt failed on a `${VAR:?msg}` whose message contained braces,
   and a failed run left a server running (killed by PID; the script now traps EXIT).
-- HF Space demo skipped (no HF_TOKEN).
+- HF Space demo: Docker Space prepared in `space/`; deploy blocked (free-tier Docker Spaces need PRO, D14).
 - **Fused C++ elementwise kernels** (`kernels/csrc/fused_ops.cpp`): decode step -15..-18%
   (SmolLM2), -5..-9% (Qwen3) (`results/microbench/decode_step.md`). llama.cpp head-to-head
   re-run in the same session afterwards: 503.9 vs 238.7 tok/s offline (2.1x), TPOT at 1 req/s

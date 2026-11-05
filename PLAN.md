@@ -168,6 +168,9 @@ Tier 1 (core engine + API) is finished and tagged `v1.0` before Tier 2 starts.
   unchanged. alpha = 1.0 default (best of 0.5 / 1.0 on agreement and perplexity).
 - **D16: fused elementwise kernels by hand.** torch.compile could not fuse them profitably
   (recompiles); four hand-written C++ kernels cut the decode step 15-18% (SmolLM2).
-- **D14: Hugging Face Space demo (item 4) skipped**: no `HF_TOKEN` in the environment.
+- **D14: Hugging Face Space demo (item 4) not deployed.** With `HF_TOKEN` available (session 3), HF
+  refused the Space: Docker/Gradio Spaces on free CPU now need a PRO subscription. A static Space
+  would only repeat the README, so it was not made. The ready Docker Space lives in `space/`
+  (`python space/deploy.py`) for when PRO is available.
 - **D3: own model code.** Writing the transformer ourselves (not wrapping HF modules) is what lets the
   engine own the KV layout, batching and attention. HF stays as a correctness oracle.
